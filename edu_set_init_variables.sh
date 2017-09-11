@@ -9,3 +9,5 @@ echo export PSLSE_ROOT=/home/opuser/pslse
 export PSLSE_ROOT=/home/opuser/pslse
 echo export PSL_DCP=/mnt/cloud-data/CAPI_PSL_Checkpoints/KU3_Checkpoint/b_route_design.dcp
 export PSL_DCP=/mnt/cloud-data/CAPI_PSL_Checkpoints/KU3_Checkpoint/b_route_design.dcp
+export FPGACARD=KU3
+export ACTION_ROOT=$SNAP_ROOT/actions/hls_helloworld
