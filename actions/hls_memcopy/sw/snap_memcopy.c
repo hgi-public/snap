@@ -91,7 +91,7 @@ static void usage(const char *prog)
 	       
 	       "echo READ 4KB from card DDR at @0x0 THEN write them to Host and file t2\n"
 	       "SNAP_CONFIG=0x0 snap_memcopy -o t2 -A CARD_DRAM -a 0x0 -s0x1000\n"
-	       "echo same test using polling instead of IRQ waiting for the result"
+	       "echo same test using polling instead of IRQ waiting for the result\n"
 	       "SNAP_CONFIG=0x0 snap_memcopy -o t2 -A CARD_DRAM -a 0x0 -s0x1000 -N\n"
 	       "\n",
 	       prog);
@@ -226,7 +226,7 @@ int main(int argc, char *argv[])
 		case 'm':
 			mode = strtol(optarg, (char **)NULL, 0);
 			break;
-    case 't':
+                case 't':
 			timeout = strtol(optarg, (char **)NULL, 0);
 			break;
 		case 'X':
@@ -253,10 +253,10 @@ int main(int argc, char *argv[])
 		}
 	}
 
-  if (argc == 1) {               // to provide help when program is called without argument
-    usage(argv[0]);
-    exit(EXIT_FAILURE);
-  }
+        if (argc == 1) {               // to provide help when program is called without argument
+          usage(argv[0]);
+          exit(EXIT_FAILURE);
+        }
                      
 	if (optind != argc) {
 		usage(argv[0]);
@@ -335,9 +335,11 @@ int main(int argc, char *argv[])
 
 	__hexdump(stderr, &mjob, sizeof(mjob));
 
-	gettimeofday(&stime, NULL);
+        printf("      get starting time\n");
+        gettimeofday(&stime, NULL);
 	rc = snap_action_sync_execute_job(action, &cjob, timeout);
 	gettimeofday(&etime, NULL);
+        printf("      get end of exec. time\n");
 	if (rc != 0) {
 		fprintf(stderr, "err: job execution %d: %s!\n", rc,
 			strerror(errno));

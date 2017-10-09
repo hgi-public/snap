@@ -110,7 +110,7 @@ typedef uint32_t snap_action_type_t; /* long action type identifies the action *
  * SNAP Job description
  *
  * The input interface struct is passed to the hardware action. The hardware
- * action processes the job an returns results either in memory or using the
+ * action processes the job and returns results either in memory or using the
  * output interface struct.
  *
  * @retc       execution status. Check this to determine if job execution
