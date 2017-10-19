@@ -52,20 +52,34 @@ static const char *mem_tab[] = { "HOST_DRAM", "CARD_DRAM", "TYPE_NVME" };
 static void usage(const char *prog)
 {
 	printf("Usage: %s [-h] [-v, --verbose] [-V, --version]\n"
-	       "  -C, --card <cardno> can be (0...3)\n"
+	       "  -C, --card <cardno>       can be (0...3)\n"
 	       "  -i, --input <file.bin>    input file.\n"
 	       "  -o, --output <file.bin>   output file.\n"
 	       "  -A, --type-in <CARD_DRAM, HOST_DRAM, ...>.\n"
 	       "  -a, --addr-in <addr>      address e.g. in CARD_RAM.\n"
-	       "  -D, --type-out <CARD_DRAM, HOST_DRAM, ...>.\n"
+	       "  -D, --type-out <CARD_DRAM,HOST_DRAM, ...>.\n"
 	       "  -d, --addr-out <addr>     address e.g. in CARD_RAM.\n"
 	       "  -s, --size <size>         size of data.\n"
 	       "  -t, --timeout             timeout in sec to wait for done.\n"
 	       "  -X, --verify              verify result if possible\n"
 	       "  -N, --no-irq              disable Interrupts\n"
 	       "\n"
+	       "Useful parameters :\n"
+	       "-------------------\n"
+	       "SNAP_TRACE  = 0x0 no debug trace  (default mode)\n"
+	       "SNAP_TRACE  = 0xF full debug trace\n"
+	       "SNAP_CONFIG = 0x0 hardware execution   (default mode)\n"
+	       "SNAP_CONFIG = 0x1 software execution\n"
+	       "\n"
 	       "Example:\n"
-	       "  snap_helloworld ...\n"
+	       "----------\n"
+	       "echo export SNAP_TRACE=0x0\n"
+	       "echo $SNAP_ROOT/software/tools/snap_maint -vvv -C0\n"
+	
+	       "echo rm /tmp/t2; rm /tmp/t3\n"
+	       "echo i /tmp/t1\n"
+	       "echo Hello world. This is my first CAPI SNAP experience. It's real fun!\n"
+
 	       "\n",
 	       prog);
 }
@@ -154,12 +168,6 @@ int main(int argc, char *argv[])
 		case 'o':
 			output = optarg;
 			break;
-		case 's':
-			size = __str_to_num(optarg);
-			break;
-		case 't':
-			timeout = strtol(optarg, (char **)NULL, 0);
-			break;
 			/* input data */
 		case 'A':
 			space = optarg;
@@ -190,9 +198,18 @@ int main(int argc, char *argv[])
 		case 'd':
 			addr_out = strtol(optarg, (char **)NULL, 0);
 			break;
-		case 'X':
+                case 's':
+                        size = __str_to_num(optarg);
+                        break;
+                case 't':
+                        timeout = strtol(optarg, (char **)NULL, 0);
+                        break;
+                case 'X':
 			verify++;
 			break;
+                case 'N':
+                        action_irq = 0;
+                        break;                        
 			/* service */
 		case 'V':
 			printf("%s\n", version);
@@ -204,9 +221,7 @@ int main(int argc, char *argv[])
 			usage(argv[0]);
 			exit(EXIT_SUCCESS);
 			break;
-		case 'N':
-			action_irq = 0;
-			break;
+
 		default:
 			usage(argv[0]);
 			exit(EXIT_FAILURE);
@@ -217,7 +232,11 @@ int main(int argc, char *argv[])
 		usage(argv[0]);
 		exit(EXIT_FAILURE);
 	}
-
+	if (argc == 1) {       // to provide help when program is called without argument
+          usage(argv[0]);
+          exit(EXIT_FAILURE);
+        }
+        
 	/* if input file is defined, use that as input */
 	if (input != NULL) {
 		size = __file_size(input);

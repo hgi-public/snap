@@ -81,17 +81,12 @@ static void usage(const char *prog)
 	       prog);
 }
 
-static void snap_prepare_nvme_memcopy(struct snap_job *cjob,
-				 struct nvme_memcopy_job *mjob,
-				 void *addr_in,
-				 uint32_t size_in,
-				 uint8_t type_in,
-				 void *addr_out,
-				 uint32_t size_out,
-				 uint8_t type_out,
-                 uint64_t drive_id)
+static void snap_prepare_nvme_memcopy(struct snap_job *cjob, struct nvme_memcopy_job *mjob,
+                                      void *addr_in,  uint32_t size_in,  uint8_t type_in,
+                                      void *addr_out, uint32_t size_out, uint8_t type_out,
+                                      uint64_t drive_id)
 {
-	fprintf(stderr, "  prepare nvme_memcopy job of %ld bytes size\n", sizeof(*mjob));
+	fprintf(stderr, "  prepare nvme_memcopy job of %ld bytes size\nThis is the exchanged information between host and fpga\n", sizeof(*mjob));
 
 	assert(sizeof(*mjob) <= SNAP_JOBSIZE);
 	memset(mjob, 0, sizeof(*mjob));
@@ -99,9 +94,8 @@ static void snap_prepare_nvme_memcopy(struct snap_job *cjob,
 	snap_addr_set(&mjob->in, addr_in, size_in, type_in,
 		      SNAP_ADDRFLAG_ADDR | SNAP_ADDRFLAG_SRC);
 	snap_addr_set(&mjob->out, addr_out, size_out, type_out,
-		      SNAP_ADDRFLAG_ADDR | SNAP_ADDRFLAG_DST |
-		      SNAP_ADDRFLAG_END);
-    mjob->drive_id = drive_id;
+		      SNAP_ADDRFLAG_ADDR | SNAP_ADDRFLAG_DST | SNAP_ADDRFLAG_END);
+        mjob->drive_id = drive_id;
 
 	snap_job_set(cjob, mjob, sizeof(*mjob), NULL, 0);
 }
@@ -131,7 +125,7 @@ int main(int argc, char *argv[])
 	uint8_t type_out = SNAP_ADDRTYPE_HOST_DRAM;
 	uint64_t addr_out = 0x0ull;
 	int verify = 0;
-    uint64_t drive_id = 0;
+        uint64_t drive_id = 0;
 	int exit_code = EXIT_SUCCESS;
 	uint8_t trailing_zeros[1024] = { 0, };
 	snap_action_flag_t action_irq = 0;
@@ -243,6 +237,11 @@ int main(int argc, char *argv[])
 		}
 	}
 
+        if (argc == 1) {               // to provide help when program is called without argument
+          usage(argv[0]);
+          exit(EXIT_FAILURE);
+        }
+        
 	if (optind != argc) {
 		usage(argv[0]);
 		exit(EXIT_FAILURE);
@@ -290,15 +289,13 @@ int main(int argc, char *argv[])
 	       "  addr_in:     %016llx\n"
 	       "  type_out:    %x %s\n"
 	       "  addr_out:    %016llx\n"
-           "  drive_id:    %ld\n"
+	       "  drive_id:    %ld\n"
 	       "  size_in/out: %08lx\n"
 	       "  mode:        %08x\n",
 	       input  ? input  : "unknown",
 	       output ? output : "unknown",
 	       type_in,  mem_tab[type_in],  (long long)addr_in,
-	       type_out, mem_tab[type_out], (long long)addr_out,
-           (long) drive_id,
-	       size, mode);
+	       type_out, mem_tab[type_out], (long long)addr_out, (long) drive_id, size, mode);
 
 	snprintf(device, sizeof(device)-1, "/dev/cxl/afu%d.0s", card_no);
 	card = snap_card_alloc_dev(device, SNAP_VENDOR_ID_IBM,

@@ -97,16 +97,11 @@ static void usage(const char *prog)
 	       prog);
 }
 
-static void snap_prepare_memcopy(struct snap_job *cjob,
-				 struct memcopy_job *mjob,
-				 void *addr_in,
-				 uint32_t size_in,
-				 uint16_t type_in,
-				 void *addr_out,
-				 uint32_t size_out,
-				 uint16_t type_out)
+static void snap_prepare_memcopy(struct snap_job *cjob, struct memcopy_job *mjob,
+				 void *addr_in,  uint32_t size_in,  uint16_t type_in,
+				 void *addr_out, uint32_t size_out, uint16_t type_out)
 {
-	fprintf(stderr, "  prepare memcopy job of %ld bytes size\n", sizeof(*mjob));
+  fprintf(stderr, "  prepare memcopy job of %ld bytes size\nThis is the exchanged information between host and fpga\n", sizeof(*mjob));
 
 	assert(sizeof(*mjob) <= SNAP_JOBSIZE);
 	memset(mjob, 0, sizeof(*mjob));
