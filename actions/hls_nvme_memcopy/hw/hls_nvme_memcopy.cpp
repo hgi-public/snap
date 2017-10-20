@@ -43,24 +43,32 @@ short write_burst_to_mem(snap_membus_t *dout_gmem,
     else
         size_in_words = (size_in_bytes_to_transfer/BPERDW) + 1;
 
-    if (memory_type == SNAP_ADDRTYPE_HOST_DRAM) {
-        // Patch to Issue#320 - memcopy doesn't handle 4Kbytes xfer
-        //memcpy((snap_membus_t  *) (dout_gmem + output_address),
-        //       buffer, size_in_bytes_to_transfer);
-        wb_dout_loop: for (int k=0; k<size_in_words; k++)
+    switch (memory_type) {
+    case SNAP_ADDRTYPE_HOST_DRAM:
+            // Patch to Issue#320 - memcopy doesn't handle 4Kbytes xfer
+            //memcpy((snap_membus_t  *) (dout_gmem + output_address),
+            //       buffer, size_in_bytes_to_transfer);
+            wb_dout_loop: for (int k=0; k<size_in_words; k++)
 #pragma HLS PIPELINE
-                    (dout_gmem + output_address)[k] = buffer[k];
+                (dout_gmem + output_address)[k] = buffer[k];
 
-               rc =  0;
-    } else {
-        // Patch to Issue#320 - memcopy doesn't handle 4Kbytes xfer
-        //memcpy((snap_membus_t  *) (d_ddrmem + output_address),
-        //       buffer, size_in_bytes_to_transfer);
-        wb_ddr_loop: for (int k=0; k<size_in_words; k++)
-#pragma HLS PIPELINE
-                    (d_ddrmem + output_address)[k] = buffer[k];
-
-               rc =  0;
+                rc =  0;
+                break;
+    case SNAP_ADDRTYPE_CARD_DRAM:
+      // Patch to Issue#320 - memcopy doesn't handle 4Kbytes xfer
+      //memcpy((snap_membus_t  *) (d_ddrmem + output_address),
+                //       buffer, size_in_bytes_to_transfer);
+                wb_ddr_loop: for (int k=0; k<size_in_words; k++)
+                #pragma HLS PIPELINE
+                (d_ddrmem + output_address)[k] = buffer[k];
+                
+                rc =  0;
+                break;
+    case SNAP_ADDRTYPE_UNUSED: /* no copy but with rc =0 */
+      rc =  0;
+      break;
+    default:
+      rc = 1;
     }
 
     return rc;
@@ -84,26 +92,35 @@ short read_burst_from_mem(snap_membus_t *din_gmem,
     else
         size_in_words = (size_in_bytes_to_transfer/BPERDW) + 1;
 
-    if (memory_type == SNAP_ADDRTYPE_HOST_DRAM) {
+    switch (memory_type) {
+      
+      case SNAP_ADDRTYPE_HOST_DRAM:
         // Patch to Issue#320 - memcopy doesn't handle 4Kbytes xfer
         //memcpy(buffer, (snap_membus_t  *) (din_gmem + input_address),
         //       size_in_bytes_to_transfer);
         rb_din_loop: for (int k=0; k<size_in_words; k++)
-#pragma HLS PIPELINE
-                    buffer[k] = (din_gmem + input_address)[k];
-
-               rc =  0;
-    } else {
+        #pragma HLS PIPELINE
+        buffer[k] = (din_gmem + input_address)[k];
+        
+        rc =  0;
+        break;
+      case SNAP_ADDRTYPE_CARD_DRAM:
         // Patch to Issue#320 - memcopy doesn't handle 4Kbytes xfer
         //memcpy(buffer, (snap_membus_t  *) (d_ddrmem + input_address),
         //       size_in_bytes_to_transfer);
         rb_ddr_loop: for (int k=0; k<size_in_words; k++)
-#pragma HLS PIPELINE
-                    buffer[k] = (d_ddrmem + input_address)[k];
-
-               rc =  0;
+        #pragma HLS PIPELINE
+        buffer[k] = (d_ddrmem + input_address)[k];
+        
+        rc =  0;
+        break;
+      case SNAP_ADDRTYPE_UNUSED: /* no copy but with rc =0 */
+        rc =  0;
+        break;
+      default:
+        rc = 1;
     }
-
+    
     return rc;
 }
 

@@ -145,7 +145,7 @@ static void process_action(snap_membus_t *din_gmem,
 	snap_membus_t  buf_gmem[MAX_NB_OF_WORDS_READ];
 	// if 4096 bytes max => 64 words
 
-	// byte address received need to be aligned with port width
+	// byte address received needs to be aligned with port width
 	InputAddress = (act_reg->Data.in.addr)   >> ADDR_RIGHT_SHIFT;
 	OutputAddress = (act_reg->Data.out.addr) >> ADDR_RIGHT_SHIFT;
 
@@ -226,9 +226,10 @@ void hls_action(snap_membus_t *din_gmem,
 #pragma HLS INTERFACE s_axilite port=return bundle=ctrl_reg
 
 	/* Required Action Type Detection */
-	// 	NOTE: switch generates better vhdl than "if" */
+	// 	NOTE: switch generates better vhdl than "if"
 	// Test used to exit the action if no parameter has been set.
- 	// Used for the discovery phase of the cards */
+ 	// Used for the discovery phase of the cards
+ 	// NEVER READ Action_Config (to avoid messing the registers mapping)!
 	switch (act_reg->Control.flags) {
 	case 0:
 		Action_Config->action_type = MEMCOPY_ACTION_TYPE;

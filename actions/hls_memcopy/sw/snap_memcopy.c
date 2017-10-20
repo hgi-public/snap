@@ -48,9 +48,9 @@ static void usage(const char *prog)
 	       "  -C, --card <cardno>        can be (0...3)\n"
 	       "  -i, --input <file.bin>     input file.\n"
 	       "  -o, --output <file.bin>    output file.\n"
-	       "  -A, --type-in <HOST_DRAM,  CARD_DRAM, TYPE_NVME, UNUSED, ...>.\n"
+	       "  -A, --type-in <HOST_DRAM,  CARD_DRAM, UNUSED, ...>.\n"
 	       "  -a, --addr-in <addr>       address e.g. in CARD_RAM.\n"
-	       "  -D, --type-out <HOST_DRAM, CARD_DRAM, TYPE_NVME, UNUSED, ...>.\n"
+	       "  -D, --type-out <HOST_DRAM, CARD_DRAM, UNUSED, ...>.\n"
 	       "  -d, --addr-out <addr>      address e.g. in CARD_RAM.\n"
 	       "  -s, --size <size>          size of data.\n"
 	       "  -m, --mode <mode>          mode flags.\n"
@@ -61,12 +61,21 @@ static void usage(const char *prog)
 	       "  -h, --help                 provides help summary\n"
 	       "  -N, --no irq               Disable Interrupts\n"
 	       "\n"
-	       "Useful parameters :\n"
+	       "NOTES : \n"
+	       "  - HOST_DRAM is the Host machine (Power cpu based) attached memory\n"
+	       "  - CARD_DRAM is the FPGA generally DDR attached memory\n"
+	       "  - NVMe usage requires specific driver, use hls_nvme_memcopy example instead\n"
+	       "  - When providing an input file, a corresponding memory allocation will be performed\n"
+	       "    in the HOST_DRAM at the reported adress\n"
+	       "    and then used for transfer, using its size, the same occurs with an output file,\n"
+	       "    this allows to ease control of input and output data\n"
+	       "\n"
+	       "Useful parameters(to be placed before the command)  :\n"
 	       "-------------------\n"
 	       "SNAP_TRACE  = 0x0 no debug trace  (default mode)\n"
 	       "SNAP_TRACE  = 0xF full debug trace\n"
-	       "SNAP_CONFIG = 0x0 hardware execution   (default mode)\n"
-	       "SNAP_CONFIG = 0x1 software execution\n"
+	       "SNAP_CONFIG = FPGA (or 0x0) hardware execution   (default mode)\n"
+	       "SNAP_CONFIG = CPU  (or 0x1) software execution\n"
 	       "\n"
 	       "Examples :\n"
 	       "----------\n"
@@ -74,7 +83,6 @@ static void usage(const char *prog)
 	       "dd if=/dev/urandom of=t1 bs=1M count=512\n"
 	       
 	       "echo READ 512MB from Host - one direction\n"
-	       
 	       "snap_memcopy -C0 -i t1\n"
 	       
 	       "echo WRITE 512MB to Host - one direction\n"
@@ -101,7 +109,8 @@ static void snap_prepare_memcopy(struct snap_job *cjob, struct memcopy_job *mjob
 				 void *addr_in,  uint32_t size_in,  uint16_t type_in,
 				 void *addr_out, uint32_t size_out, uint16_t type_out)
 {
-  fprintf(stderr, "  prepare memcopy job of %ld bytes size\nThis is the exchanged information between host and fpga\n", sizeof(*mjob));
+  fprintf(stderr, "  prepare memcopy job of %ld bytes size\n"
+  "  This is the register information exchanged between host and fpga\n", sizeof(*mjob));
 
 	assert(sizeof(*mjob) <= SNAP_JOBSIZE);
 	memset(mjob, 0, sizeof(*mjob));
@@ -324,17 +333,23 @@ int main(int argc, char *argv[])
 		goto out_error1;
 	}
 
+        // The following snap_prepare_memcopy will fill the software mjob and cjob
+        // structures with the appropriate content
 	snap_prepare_memcopy(&cjob, &mjob,
 			     (void *)addr_in,  size, type_in,
 			     (void *)addr_out, size, type_out);
 
 	__hexdump(stderr, &mjob, sizeof(mjob));
 
-        printf("      get starting time\n");
+        printf("      get starting time\nAction is running ....");
         gettimeofday(&stime, NULL);
+        // The following snap_action_sync_execute_job will transfer the
+        // structures cjob and mjob contents to fpga registers and launch
+        // the specified action.
+        // => timing will thus take into account the registers transfer time added to the action duration
 	rc = snap_action_sync_execute_job(action, &cjob, timeout);
 	gettimeofday(&etime, NULL);
-        printf("      get end of exec. time\n");
+        printf("      got end of exec. time\n");
 	if (rc != 0) {
 		fprintf(stderr, "err: job execution %d: %s!\n", rc,
 			strerror(errno));
@@ -383,6 +398,7 @@ int main(int argc, char *argv[])
 
 	fprintf(stdout, "memcopy of %lld bytes took %lld usec @ %.3f MiB/sec\n",
 		(long long)size, (long long)diff_usec, mib_sec);
+        fprintf(stdout, "This represents the register transfer time + memcopy action time");       
 
 	snap_detach_action(action);
 	snap_card_free(card);
