@@ -24,7 +24,7 @@
 #include "hls_snap.H"
 #include <action_nvme_memcopy.h> /* Memcopy Job definition */
 
-#define RELEASE_LEVEL         0x00000001
+#define RELEASE_LEVEL         0x00000002
 
 #define MAX_NB_OF_BYTES_READ  (256 * 1024)
 #define SSD_BLOCK_SIZE        512
