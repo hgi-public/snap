@@ -35,7 +35,7 @@ int verbose_flag = 0;
 
 static const char *version = GIT_VERSION;
 
-static const char *mem_tab[] = { "HOST_DRAM", "CARD_DRAM", "TYPE_NVME", "UNUSED"};
+static const char *mem_tab[] = { "HOST_DRAM", "CARD_DRAM", "UNUSED"};
 
 /*
  * @brief	prints valid command line options
@@ -202,6 +202,8 @@ int main(int argc, char *argv[])
 				type_in = SNAP_ADDRTYPE_CARD_DRAM;
 			else if (strcmp(space, "HOST_DRAM") == 0)
 				type_in = SNAP_ADDRTYPE_HOST_DRAM;
+                        else if (strcmp(space, "UNUSED") == 0)
+                          type_in = SNAP_ADDRTYPE_UNUSED;
 			else {
                                 printf("bad Origin (A) argument provided!\n");
 				usage(argv[0]);
@@ -218,6 +220,8 @@ int main(int argc, char *argv[])
 				type_out = SNAP_ADDRTYPE_CARD_DRAM;
 			else if (strcmp(space, "HOST_DRAM") == 0)
 				type_out = SNAP_ADDRTYPE_HOST_DRAM;
+                        else if (strcmp(space, "UNUSED") == 0)
+                                type_in = SNAP_ADDRTYPE_UNUSED;
 			else {
                                 printf("bad Destination argument provided!\n");
 				usage(argv[0]);

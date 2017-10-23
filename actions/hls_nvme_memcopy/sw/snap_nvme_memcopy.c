@@ -186,7 +186,10 @@ int main(int argc, char *argv[])
 				type_in = SNAP_ADDRTYPE_HOST_DRAM;
 			else if (strcmp(space, "CARD_DRAM") == 0)
 				type_in = SNAP_ADDRTYPE_CARD_DRAM;
+                        else if (strcmp(space, "UNUSED") == 0)
+                                type_in = SNAP_ADDRTYPE_UNUSED;
 			else {
+                                printf("bad Origin (A) argument provided!\n");
 				usage(argv[0]);
 				exit(EXIT_FAILURE);
 			}
@@ -203,7 +206,10 @@ int main(int argc, char *argv[])
 				type_out = SNAP_ADDRTYPE_HOST_DRAM;
 			else if (strcmp(space, "CARD_DRAM") == 0)
 				type_out = SNAP_ADDRTYPE_CARD_DRAM;
+                        else if (strcmp(space, "UNUSED") == 0)
+                                type_in = SNAP_ADDRTYPE_UNUSED;
 			else {
+                                printf("bad Destination argument provided!\n");
 				usage(argv[0]);
 				exit(EXIT_FAILURE);
 			}
