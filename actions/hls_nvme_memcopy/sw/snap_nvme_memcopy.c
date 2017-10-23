@@ -376,7 +376,7 @@ int main(int argc, char *argv[])
 	diff_usec = timediff_usec(&etime, &stime);
         mib_sec = (diff_usec == 0) ? 0.0 : (double)size / diff_usec;
         
-        if (size==0)
+        if (size!=0)
         {  
           fprintf(stdout, "memcopy of %lld bytes took %lld usec @ %.3f MiB/sec\n",
                   (long long)size, (long long)diff_usec, mib_sec);
