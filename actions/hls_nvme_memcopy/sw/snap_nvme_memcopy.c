@@ -129,6 +129,8 @@ int main(int argc, char *argv[])
 	int exit_code = EXIT_SUCCESS;
 	uint8_t trailing_zeros[1024] = { 0, };
         snap_action_flag_t action_irq = (SNAP_ACTION_DONE_IRQ | SNAP_ATTACH_IRQ);
+        long long diff_usec = 0;
+        double mib_sec;
 
 	while (1) {
 		int option_index = 0;
@@ -209,7 +211,7 @@ int main(int argc, char *argv[])
                         else if (strcmp(space, "UNUSED") == 0)
                                 type_in = SNAP_ADDRTYPE_UNUSED;
 			else {
-                                printf("ERROR : bad Destination (-D) argument provided!\n");
+                                printf("ERROR : bad Destination (-D) argument provided!\n\n");
 				usage(argv[0]);
 				exit(EXIT_FAILURE);
 			}
@@ -370,8 +372,22 @@ int main(int argc, char *argv[])
 			fprintf(stderr, "warn: Verification works currently "
 				"only with HOST_DRAM\n");
 	}
-	fprintf(stdout, "nvme_memcopy took %lld usec\n",
+	
+	diff_usec = timediff_usec(&etime, &stime);
+        mib_sec = (diff_usec == 0) ? 0.0 : (double)size / diff_usec;
+        
+        if (size==0)
+        {  
+          fprintf(stdout, "memcopy of %lld bytes took %lld usec @ %.3f MiB/sec\n",
+                  (long long)size, (long long)diff_usec, mib_sec);
+          fprintf(stdout, "This represents the register transfer time + memcopy action time");       
+        }
+        
+        else
+        {
+          fprintf(stdout, "nvme_memcopy took %lld usec\n",
 		(long long)timediff_usec(&etime, &stime));
+        }
 
 	snap_detach_action(action);
 	snap_card_free(card);
