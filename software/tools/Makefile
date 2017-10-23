@@ -32,7 +32,16 @@ endif
 snap_peek_objs = force_cpu.o
 snap_poke_objs = force_cpu.o
 
-projs = snap_peek snap_poke bfs_diff
+snap_cblk_objs += force_cpu.o
+
+ifdef BUILD_SIMCODE
+snap_cblk_libs += ../lib/libsnapcblk.a
+else
+snap_cblk_LDFLAGS += -L../lib
+snap_cblk_libs += -lsnapcblk -lsnap
+endif
+
+projs = snap_peek snap_poke snap_cblk
 projs += snap_maint snap_nvme_init
 objs = force_cpu.o $(projs:=.o)
 hfiles = force_cpu.h  snap_fw_example.h
@@ -51,7 +60,7 @@ $(projs): snap_actions.h $(objs) $(libs)
 
 ### Generic rule to build a tool
 %: %.o
-	$(CC) $(LDFLAGS) $@.o $($(@)_objs) $($(@)_libs) $(LDLIBS) -o $@
+	$(CC) $(LDFLAGS) $($(@)_LDFLAGS) $@.o $($(@)_objs) $($(@)_libs) $(LDLIBS) -o $@
 
 %.o: %.c $(libs) $(hfiles)
 	$(CC) -c $(CPPFLAGS) $(CFLAGS) $< -o $@

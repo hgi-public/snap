@@ -128,18 +128,20 @@ while [ -z "$SETUP_DONE" ]; do
   unset AR
   if [ -n "$HDL_EXAMPLE" ]; then
     AR='${SNAP_ROOT}/actions/hdl_example'
-  elif [ -n "$HLS_BFS" ]; then
-    AR='${SNAP_ROOT}/actions/hls_bfs'
-  elif [ -n "$HLS_HASHJOIN" ]; then
-    AR='${SNAP_ROOT}/actions/hls_hashjoin'
-  elif [ -n "$HLS_INTERSECT" ]; then
-    AR='${SNAP_ROOT}/actions/hls_intersect'
+  elif [ -n "$HDL_NVME_EXAMPLE" ]; then
+    AR='${SNAP_ROOT}/actions/hdl_nvme_example'
   elif [ -n "$HLS_MEMCOPY" ]; then
     AR='${SNAP_ROOT}/actions/hls_memcopy'
-  elif [ -n "$HLS_SEARCH" ]; then
-    AR='${SNAP_ROOT}/actions/hls_search'
   elif [ -n "$HLS_SPONGE" ]; then
     AR='${SNAP_ROOT}/actions/hls_sponge'
+  elif [ -n "$HLS_HASHJOIN" ]; then
+    AR='${SNAP_ROOT}/actions/hls_hashjoin'
+  elif [ -n "$HLS_SEARCH" ]; then
+    AR='${SNAP_ROOT}/actions/hls_search'
+  elif [ -n "$HLS_BFS" ]; then
+    AR='${SNAP_ROOT}/actions/hls_bfs'
+  elif [ -n "$HLS_INTERSECT" ]; then
+    AR='${SNAP_ROOT}/actions/hls_intersect'
   elif [ -n "$HLS_NVME_MEMCOPY" ]; then
     AR='${SNAP_ROOT}/actions/hls_nvme_memcopy'
   elif [ -n "$HLS_HELLOWORLD" ]; then
@@ -189,17 +191,11 @@ while [ -z "$SETUP_DONE" ]; do
   # Note: USE_PRFLOW is defined via snap_config
   if [ "$USE_PRFLOW" = "TRUE" ]; then
     echo "=====PR flow setup====================================="
-    if [ -z "$DCP_ROOT" ]; then
-      export DCP_ROOT='${SNAP_ROOT}/dcp'
-      echo "Setting DCP_ROOT               to: \"$DCP_ROOT\""
-      mkdir -p $snapdir/dcp
-    else
-      echo "DCP_ROOT                is set to: \"$DCP_ROOT\""
-    fi
     RESP=`grep DCP_ROOT $snap_env_sh`
     if [ -z "$RESP" ]; then
       echo "export DCP_ROOT=" >> $snap_env_sh
     fi
+    echo "DCP_ROOT                is set to: \"$DCP_ROOT\""
     if [ -z "$DCP_ROOT" ]; then
       SETUP_EMPTY="$SETUP_EMPTY\n  DCP_ROOT"
     fi
@@ -242,16 +238,10 @@ while [ -z "$SETUP_DONE" ]; do
   # Note: NVME_USED is defined via snap_config
   if [[ "$NVME_USED" = "TRUE" ]]; then
     echo "=====Denali setup======================================"
-    if [ -z "$DENALI_TOOLS" ]; then
-      SETUP_INFO="$SETUP_INFO\n### INFO ### Setting of NVME_USED=$NVME_USED but DENALI_TOOLS not set!"
+    if [ -z "$DENALI" ]; then
+      SETUP_INFO="$SETUP_INFO\n### INFO ### Setting of NVME_USED=$NVME_USED but DENALI not set!"
     else
-      echo "DENALI_TOOLS            is set to: \"$DENALI_TOOLS\""
-    fi
-
-    if [ -z "$DENALI_CUSTOM" ]; then
-      SETUP_INFO="$SETUP_INFO\n### INFO ### Setting of NVME_USED=$NVME_USED but DENALI_CUSTOM not set!"
-    else
-      echo "DENALI_CUSTOM           is set to: \"$DENALI_CUSTOM\""
+      echo "DENALI                  is set to: \"$DENALI\""
     fi
   fi
 

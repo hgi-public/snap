@@ -45,10 +45,20 @@ static struct snap_sim_action *actions = NULL;
 
 int action_trace_enabled(void)
 {
-	return snap_trace & 0x8;
+	return snap_trace & 0x08;
 }
 
-#define simulation_enabled()  (snap_config & 0x1)
+int block_trace_enabled(void)
+{
+	return snap_trace & 0x20;
+}
+
+int cache_trace_enabled(void)
+{
+	return snap_trace & 0x40;
+}
+
+#define simulation_enabled()  (snap_config & 0x01)
 
 #define snap_trace(fmt, ...) do {					\
 		if (snap_trace_enabled())				\
@@ -130,6 +140,10 @@ static void *hw_snap_card_alloc_dev(const char *path,
 
 	dn->priv = NULL;
 
+	/* Create Err Buffer, If we cannot get it, continue with warning ... */
+	dn->errinfo_size = 0;
+	dn->errinfo = NULL;
+
 	snap_trace("%s Enter %s\n", __func__, path);
 	afu_h = cxl_afu_open_dev((char*)path);
 	if (NULL == afu_h)
@@ -160,9 +174,6 @@ static void *hw_snap_card_alloc_dev(const char *path,
 		dn->device_id = (uint16_t)id;
         }
 
-	/* Create Err Buffer, If we cannot get it, continue with warning ... */
-	dn->errinfo_size = 0;
-	dn->errinfo = NULL;
 	rc = cxl_errinfo_size(afu_h, &dn->errinfo_size);
 	if (0 == rc) {
 		dn->errinfo = malloc(dn->errinfo_size);
@@ -276,11 +287,15 @@ static void hw_snap_card_free(struct snap_card *card)
 	if (!card)
 		return;
 
-	if (card->errinfo)
-		free(card->errinfo);
-
-	cxl_afu_free(card->afu_h);
-	free(card);
+	if (card->errinfo) {
+		__free(card->errinfo);
+		card->errinfo = NULL;
+	}
+	if (card->afu_h) {
+		cxl_afu_free(card->afu_h);
+		card->afu_h = NULL;
+	}
+	__free(card);
 }
 
 static int hw_wait_irq(struct snap_card *card, int timeout_sec, int expect_irq)
@@ -355,6 +370,11 @@ static struct snap_action *hw_attach_action(struct snap_card *card,
 	int maid;                       /* Max Acition Id's */
 	int t0, dt;
 	struct snap_action *action = NULL;
+
+	if (card == NULL) {
+		errno = EINVAL;
+		return NULL;
+	}
 
 	snap_trace("%s Enter Action: 0x%x Old Action: %x "
 		   "Flags: 0x%x Base: %x timeout: %d sec Seq: %x\n",
@@ -459,6 +479,11 @@ static int hw_detach_action(struct snap_action *action)
 	int rc = 0;
 	uint64_t data;
 	struct snap_card *card = (struct snap_card *)action;
+
+	if (action == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
 
 	card->start_attach = true;              /* Set Flag to Attach next Time again */
 	hw_snap_mmio_write64(card, SNAP_S_JCR, 2); /* Stop:  Detach action */
@@ -946,7 +971,7 @@ static void *sw_card_alloc_dev(const char *path __unused,
 
 static void sw_card_free(struct snap_card *card)
 {
-	free(card);
+	__free(card);
 }
 
 static int sw_mmio_write32(struct snap_card *card,
@@ -1139,8 +1164,17 @@ static void _init(void)
 		snap_trace = strtol(trace_env, (char **)NULL, 0);
 
 	config_env = getenv("SNAP_CONFIG");
-	if (config_env != NULL)
-		snap_config = strtol(config_env, (char **)NULL, 0);
+	if (config_env != NULL) {
+                if ( (strcmp(config_env, "FPGA") == 0) ||
+                     (strcmp(config_env, "fpga") == 0) )
+                        snap_config = 0x0;
+                else if ( (strcmp(config_env, "CPU") == 0) ||
+                          (strcmp(config_env, "cpu") == 0) )
+                        snap_config = 0x1;
+                else {
+		        snap_config = strtol(config_env, (char **)NULL, 0);
+                }
+        }
 
 	if (simulation_enabled())
 		df = &software_funcs;

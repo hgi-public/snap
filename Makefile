@@ -28,7 +28,7 @@ snap_env_sh = snap_env.sh
 clean_subdirs += $(config_subdirs) $(software_subdirs) $(hardware_subdirs) $(action_subdirs)
 
 # Only build if the subdirectory is really existent
-.PHONY: help $(software_subdirs) software $(action_subdirs) actions $(hardware_subdirs) hardware test install uninstall snap_env hw_config model image cloud_base cloud_action cloud_merge snap_config config menuconfig xconfig gconfig oldconfig clean clean_config clean_env
+.PHONY: help $(software_subdirs) software $(action_subdirs) actions $(hardware_subdirs) hardware test install uninstall snap_env hw_config model sim image cloud_base cloud_action cloud_merge snap_config config menuconfig xconfig gconfig oldconfig clean clean_config clean_env gitclean
 
 help:
 	@echo "Main targets for the SNAP Framework make process:";
@@ -37,6 +37,7 @@ help:
 	@echo "* model          Build simulation model for simulator specified via target snap_config";
 	@echo "* image          Build a complete FPGA bitstream (will take more than one hour)";
 	@echo "* hardware       Build simulation model and FPGA bitstream (combines targets 'model' and 'image')";
+	@echo "* sim            Start a simulation";
 	@echo "* software       Build software libraries and tools for SNAP";
 	@echo "* actions        Build the applications for all actions";
 	@echo "* clean          Remove all files generated in make process";
@@ -91,7 +92,7 @@ $(hardware_subdirs): $(snap_env_sh)
 hardware: $(hardware_subdirs)
 
 # Model build and config
-hw_config model image cloud_base cloud_action cloud_merge: $(snap_env_sh)
+hw_config model sim image cloud_base cloud_action cloud_merge: $(snap_env_sh)
 	@for dir in $(hardware_subdirs); do                \
 	    if [ -d $$dir ]; then                          \
 	        $(MAKE) -s -C $$dir $@ || exit 1;          \
@@ -102,25 +103,20 @@ else #noteq ($(PLATFORM),x86_64)
 .PHONY: wrong_platform
 
 wrong_platform:
-	@echo; echo "\nSNAP hardware builds are possible on x86 platform only\n"; echo;
+	@echo; echo "\nSNAP hardware builds and simulation are possible on x86 platform only\n"; echo;
 
-$(hardware_subdirs) hardware hw_config model image cloud_base cloud_action cloud_merge: wrong_platform
+$(hardware_subdirs) hardware hw_config model sim image cloud_base cloud_action cloud_merge: wrong_platform
 endif
 
 # SNAP Config
 config menuconfig xconfig gconfig oldconfig:
 	@echo "$@: Setting up SNAP configuration"
-	@if [ -e $(snap_config) ]; then                  \
-		mkdir -p scripts/build;                  \
-		cp $(snap_config) scripts/build/.config; \
-	else                                             \
-		$(RM) scripts/build/.config;             \
-	fi
-	@for dir in $(config_subdirs); do                \
-	    if [ -d $$dir ]; then                        \
-	        $(MAKE) -s -C $$dir $@ || exit 1;        \
-	    fi                                           \
+	@for dir in $(config_subdirs); do          \
+	    if [ -d $$dir ]; then                  \
+	        $(MAKE) -s -C $$dir $@ || exit 1;  \
+	    fi                                     \
 	done
+	@$(MAKE) -C hardware clean
 
 snap_config:
 	@$(MAKE) -s menuconfig || exit 1
@@ -140,7 +136,6 @@ $(snap_env_sh) snap_env: $(snap_config_sh)
 		echo "ERROR: Configuration $@ not existing!";	\
 		exit 2 ; 					\
 	fi
-	@mkdir -p scripts/build
 	@cp defconfig/$@ $(snap_config)
 	@$(MAKE) -s oldconfig
 	@$(MAKE) -s snap_env
@@ -161,3 +156,8 @@ clean_config: clean
 
 clean_env: clean_config
 	@$(RM) $(snap_env_sh)
+
+gitclean:
+	@echo -e "[GITCLEAN............] cleaning and resetting snap git";
+	git clean -f -d -x
+	git reset --hard
