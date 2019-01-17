@@ -105,20 +105,41 @@ extern "C" {
  *  SNAP SNAP Capability Register (SCaR)
  *  ===================================
  *  Address: 0x0000030
- *   63..32 RO: Reserved
+ *   63..40 RO: Reserved
+ *   39..36 RO: Minimum size for DMA transfers to/from Host
+ *              Value t means that minimum transfer size is 2^t B
+ *   35..32 RO: Data alignment for DMA transfers to/from Host
+ *              Value a means that transfers need to be 2^a B aligned
  *   31..16 RO: Size of attached on-card SDRAM in MB
  *   15..9  RO: Reserved
  *       8  RO: NVMe enabled
  *    7..0  RO: Card type:
+ *              0x14 : AD9V3
+ *              0x13 : S241
+ *              0x12 : FX609
+ *              0x11 : RCXVUP
+ *              0x10 : N250SP
+ *              0x03 : AD8K5
+ *              0x02 : S121B
  *              0x01 : N250S
  *              0x00 : ADKU3
  */
 #define SNAP_CAP        0x30
+#define SNAP_NVME_ENA   0x100
+#define AD9V3_CARD      0x014     /* CAPI 2.0 */
+#define S241_CARD       0x013     /* CAPI 2.0 */
+#define FX609_CARD      0x012     /* CAPI 2.0 */
+#define RCXVUP_CARD     0x011     /* CAPI 2.0 */
+#define N250SP_CARD     0x010     /* CAPI 2.0 */
+#define AD8K5_CARD      0x003
+#define S121B_CARD      0x002
+#define N250S_CARD      0x001
+#define ADKU3_CARD      0x000
 
 /*
  * Freerunning Timer (FRT)
  * =======================
- * Address: 0x0000080
+ * Address: 0x000008AD8K5
  * 63..0  RO: Counter counting the number of clock cycles since reset (afu open)
  *            This counter increments with the 250MHz PSL clock
  */
@@ -213,9 +234,17 @@ extern "C" {
 
 /* Context Status Register (CSR) */
 #define	SNAP_CSR	0x1008
+#define SNAP_CSR_SAT    0x80           /* RO: Short Action Type for this context is assigned */
+#define SNAP_CSR_ATT    0x40           /* RO: This context is attached to an action */
+#define SNAP_CSR_EXEC   0x01           /* RO: Currently executing job */
+#define SNAP_CSR_ACT    0x00           /* RO: Context Active */
+#define SNAP_CSR_ATTACHED (SNAP_CSR_SAT | SNAP_CSR_ATT)
 
 /* Job Command Register (JCR) */
 #define	SNAP_JCR	0x1010
+#define	SNAP_JCR_ABORT  0x0004         /* Reset Action, than Detach action from context */
+#define	SNAP_JCR_STOP   0x0002         /* Detach action from context */
+#define	SNAP_JCR_START  0x0001         /* Attach action to context */
 
 #define	SNAP_AAT	0x1018
 #define	SNAP_JREQ_QR	0x1020

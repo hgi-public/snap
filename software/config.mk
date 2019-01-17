@@ -14,6 +14,19 @@
 # limitations under the License.
 #
 
+# Check if SNAP_ROOT is set. Having SNAP_ROOT set allows simplifications
+# in the Makeefiles all over the place. We tried with relative path setups
+# but that is cumbersome if we like to use this from different levels
+# in the directory tree.
+#
+
+ifndef SNAP_ROOT
+$(error Please set SNAP_ROOT to the repository root directory.)
+endif
+ifeq ("$(wildcard $(SNAP_ROOT)/ActionTypes.md)","")
+$(error Please make sure that SNAP_ROOT=$$SNAP_ROOT is set up correctly.)
+endif
+
 # Verbosity level:
 #   V=0 means completely silent
 #   V=1 means brief output
@@ -70,18 +83,12 @@ endif
 #
 HAS_GIT = $(shell git describe > /dev/null 2>&1 && echo y || echo n)
 
-# Change this with care
-
-VERSION=0.1.2
-MAJOR_VERSION=$(shell echo $(VERSION) | cut -d'.' -f1)
-MINOR_VERSION=$(shell echo $(VERSION) | cut -d'.' -f2)
-PATCH_VERSION=$(shell echo $(VERSION) | cut -d'.' -f3)
-EXTRA_VERSION=$(GIT_BRANCH)
+# Set a default Version
+VERSION=0.0.9-no-git
 
 ifeq (${HAS_GIT},y)
-GIT_BRANCH=$(shell git describe --abbrev=4 --always --tags | sed -e 's/v//g')
-#GIT_BRANCH=$(shell git describe --abbrev=0 --tags | cut -c 2-7)
-VERSION:=$(VERSION)-$(GIT_BRANCH)
+	GIT_BRANCH=$(shell git describe --always --tags)
+	VERSION:=$(GIT_BRANCH)
 endif
 
 CFLAGS ?= -W -Wall -Werror -Wwrite-strings -Wextra -O2 -g \
@@ -92,6 +99,10 @@ CFLAGS += -DGIT_VERSION=\"$(VERSION)\" \
 
 # Optimizations
 CFLAGS += -funroll-all-loops
+
+# General settings: Include and library search path
+CFLAGS += -I$(SNAP_ROOT)/software/include 
+LDFLAGS += -L$(SNAP_ROOT)/software/lib
 
 # Force 32-bit build
 #   This is needed to generate the code for special environments. We have
@@ -111,8 +122,7 @@ ifndef PSLSE_ROOT
 PSLSE_ROOT=$(abspath ../../../pslse)
 endif
 
-CFLAGS += -I $(PSLSE_ROOT)/libcxl -I $(PSLSE_ROOT)/common
-FORCE_32BIT     ?= 0
+FORCE_32BIT ?= 0
 
 ifeq ($(FORCE_32BIT),1)
 CFLAGS += -m32
@@ -127,6 +137,16 @@ ARFLAGS =
 endif
 else
 ARFLAGS =
+endif
+
+#
+# If we build for simulation we need to take the PSLSE version
+# of libcxl. This is true for linage as well as when we setup
+# the LD_LIBRARY_PATH on program execution.
+#
+ifdef BUILD_SIMCODE
+CFLAGS += -D_SIM_ -I$(PSLSE_ROOT)/libcxl -I$(PSLSE_ROOT)/common
+LDFLAGS += -L$(PSLSE_ROOT)/libcxl
 endif
 
 DESTDIR ?= /usr

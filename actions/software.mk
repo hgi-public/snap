@@ -14,6 +14,8 @@
 # limitations under the License.
 #
 
+-include $(SNAP_ROOT)/snap_env.sh
+
 ifndef PSLSE_ROOT
 # FIXME If we find a better way to do the following, let us know:
 #   Environment variable PSLSE_ROOT defined by hardware setup scripts.
@@ -24,17 +26,16 @@ endif
 
 include $(SNAP_ROOT)/software/config.mk
 
-CFLAGS += -std=c99 -I$(SNAP_ROOT)/software/include
-DESTDIR ?= /usr
-libs += $(SNAP_ROOT)/software/lib/libsnap.a
-LDLIBS += $(libs) -lpthread
+CFLAGS += -std=c99
+LDLIBS += -lsnap -lcxl -lpthread
+LDFLAGS += -Wl,-rpath,$(SNAP_ROOT)/software/lib
 
-# Link statically for PSLSE simulation and dynamically for real version
+LIBS += $(SNAP_ROOT)/software/lib/libsnap.so
+
 ifdef BUILD_SIMCODE
-libs += $(PSLSE_ROOT)/libcxl/libcxl.a
 CFLAGS += -D_SIM_
-else
-LDLIBS += -lcxl
+LDFLAGS += -L$(PSLSE_ROOT)/libcxl -Wl,-rpath,$(PSLSE_ROOT)/libcxl
+LIBS += $(PSLSE_ROOT)/libcxl/libcxl.so
 endif
 
 # This rule should be the 1st one to find (default)
@@ -46,10 +47,23 @@ all: all_build
 # This rule needs to be behind all the definitions above
 all_build: $(projs)
 
-$(projs): $(libs)
+$(projs): $(LIBS) $(libs)
 
-$(PSLSE_ROOT)/libcxl/libcxl.a $(SNAP_ROOT)/software/lib/libsnap.a:
+$(libs): $(LIBS)
+
+$(SNAP_ROOT)/software/lib/libsnap.so:
 	$(MAKE) -C `dirname $@`
+
+ifdef BUILD_SIMCODE
+$(PSLSE_ROOT)/libcxl/libcxl.so:
+	$(MAKE) -C `dirname $@`
+endif
+
+# Resolve dependencies to required libraries
+#$(projs) $(libs): $(PSLSE_ROOT)/libcxl/libcxl.so $(SNAP_ROOT)/software/lib/libsnap.so
+#
+#$(PSLSE_ROOT)/libcxl/libcxl.so $(SNAP_ROOT)/software/lib/libsnap.so:
+#	$(MAKE) -C `dirname $@`
 
 ### Deactivate existing implicit rule
 %: %.c
@@ -57,15 +71,20 @@ $(PSLSE_ROOT)/libcxl/libcxl.a $(SNAP_ROOT)/software/lib/libsnap.a:
 
 ### Generic rule to build a tool
 %: %.o
-	$(CC) $(LDFLAGS) $@.o $($(@)_objs) $($(@)_libs) $(LDLIBS) -o $@
+	$(CC) $(LDFLAGS) $($(@)_LDFLAGS) $@.o $($(@)_objs) $($(@)_libs) $(LDLIBS) -o $@
 
-%.o: %.c $(libs)
-	$(CC) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+%.o: %.c
+	$(CC) -c $(CPPFLAGS) $($(@:.o=)_CPPFLAGS) $(CFLAGS) $< -o $@
 
 install: all
 	@mkdir -p $(DESTDIR)/bin
 	@for f in $(projs); do 					\
+		echo "installing $(DESTDIR)/bin/$$f ...";	\
 		intall -D -m 755 $$f -T $(DESTDIR)/bin/$$f	\
+	done
+	@for f in $(libs); do 					\
+		echo "installing $(DESTDIR)/lib/$$f ...";	\
+		intall -D -m 755 $$f -T $(DESTDIR)/lib/$$f	\
 	done
 
 uninstall:
@@ -73,7 +92,11 @@ uninstall:
 		echo "removing $(DESTDIR)/bin/$$f ...";		\
 		$(RM) $(DESTDIR)/bin/$$f;			\
 	done
+	@for f in $(libs) ; do					\
+		echo "removing $(DESTDIR)/lib/$$f ...";		\
+		$(RM) $(DESTDIR)/lib/$$f;			\
+	done
 
 clean distclean:
-	$(RM) $(projs) *.o *.log *.out
+	$(RM) $(projs) $(libs) *.o *.log *.out *~
 

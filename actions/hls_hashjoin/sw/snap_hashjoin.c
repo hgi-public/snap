@@ -196,10 +196,44 @@ static void usage(const char *prog)
 	       "  -Q, --t1-entries <items> Entries in table1.\n"
 	       "  -T, --t2-entries <items> Entries in table2.\n"
 	       "  -s, --seed <seed>        Random seed to enable recreation.\n"
-	       "  -I, --irq                Enable Interrupts\n"
+	       "  -N, --no irq             Disable Interrupts (polling)\n"
 	       "\n"
-	       "Example:\n"
-	       "  snap_hashjoin ...\n"
+	       "NOTES : \n"
+	       " - Q is the Table 1 containing name and age\n"
+	       " - T is the Table 2 containing name and animals\n"
+	       " - The result will be stored in Table 3 containing name, animal and age \n"
+	       " The table 2 is limited to 32 on purpose and results will be given at each action call\n"
+	       "\n"
+               "Useful parameters :\n"
+               "-------------------\n"
+               "SNAP_TRACE=0x0  no debug trace  (default mode)\n"
+               "SNAP_TRACE=0xF  full debug trace\n"
+               "SNAP_CONFIG=FPGA hardware execution   (default mode)\n"
+               "SNAP_CONFIG=CPU  software execution\n"
+               "\n"
+               "Example on a real card\n"
+               "----------------------\n"
+	       "cd $SNAP_ROOT && export ACTION_ROOT=$SNAP_ROOT/actions/hls_hashjoin\n"
+	       "source snap_path.sh\n"
+	       "snap_maint -vv\n"
+	       "\n"
+	       "echo Random generation of 2 tables with default table size:"
+	       " Table1 = Q = 25 entries / Table2 = T = 23 entries\n"
+	       "snap_hashjoin -vv -C0\n"
+	       "echo Random generation of 2 tables with 30 entries for Table1/Q and 60 for Table2/T"
+	       "=> this will induce 2 calls of the action since Table2 is limited to 32 on purpose\n"
+	       "snap_hashjoin -vv -Q 30 -T 60 -C0\n"
+	       "\n"
+               "Example for a simulation\n"
+               "------------------------\n"
+	       "snap_maint -vv\n"
+	       "\n"
+	       "echo Random generation of 2 tables with default table size:"
+	       " Table1 = Q = 25 entries / Table2 = T = 23 entries\n"
+	       "snap_hashjoin -vv -t2500 -C0\n"
+	       "echo Random generation of 2 tables with 30 entries for Table1/Q and 60 for Table2/T"
+	       "=> this will induce 2 calls of the action since Table2 is limited to 32 on purpose\n"
+	       "snap_hashjoin -vv -t2500 -Q 30 -T 60 -C0\n"
 	       "\n",
 	       prog);
 }
@@ -224,7 +258,7 @@ int main(int argc, char *argv[])
 	unsigned int t2_entries = 23;
 	unsigned int t2_tocopy = 0;
 	unsigned int seed = 1974;
-	snap_action_flag_t action_irq = 0;
+	snap_action_flag_t action_irq = (SNAP_ACTION_DONE_IRQ | SNAP_ATTACH_IRQ);
 
 	while (1) {
 		int option_index = 0;
@@ -237,12 +271,12 @@ int main(int argc, char *argv[])
 			{ "version",	 no_argument,	    NULL, 'V' },
 			{ "verbose",	 no_argument,	    NULL, 'v' },
 			{ "help",	 no_argument,	    NULL, 'h' },
-			{ "irq",	 no_argument,	    NULL, 'I' },
+			{ "noirq",	 no_argument,	    NULL, 'N' },
 			{ 0,		 no_argument,	    NULL, 0   },
 		};
 
 		ch = getopt_long(argc, argv,
-				 "s:Q:T:C:t:VvhI",
+				 "s:Q:T:C:t:VvhN",
 				 long_options, &option_index);
 		if (ch == -1)	/* all params processed ? */
 			break;
@@ -275,7 +309,7 @@ int main(int argc, char *argv[])
 			exit(EXIT_SUCCESS);
 			break;
 		case 'I':
-			action_irq = (SNAP_ACTION_DONE_IRQ | SNAP_ATTACH_IRQ);
+			action_irq = 0;
 			break;
 		default:
 			usage(argv[0]);
@@ -283,6 +317,11 @@ int main(int argc, char *argv[])
 		}
 	}
 
+        if (argc == 1) {               // to provide help when program is called without argument
+          usage(argv[0]);
+          exit(EXIT_FAILURE);
+        }
+        
 	if (optind != argc) {
 		usage(argv[0]);
 		exit(EXIT_FAILURE);
@@ -300,6 +339,9 @@ int main(int argc, char *argv[])
 	if (card == NULL) {
 		fprintf(stderr, "err: failed to open card %u: %s\n",
 			card_no, strerror(errno));
+                fprintf(stderr, "Default mode is FPGA mode.\n");
+                fprintf(stderr, "Did you want to run CPU mode ? => add SNAP_CONFIG=CPU before your command.\n");
+                fprintf(stderr, "Otherwise make sure you ran snap_find_card and snap_maint for your selected card.\n");
 		goto out_error;
 	}
 
@@ -346,19 +388,26 @@ int main(int argc, char *argv[])
 			goto out_error2;
 		}
 
-		if (verbose_flag)
+		if (verbose_flag) {
+			pr_info("Table 3 is the resulting table:\n");
 			table3_dump(t3, jout.t3_produced);
+		}
 
 		t1_entries = 0; /* no need to process this twice,
 				   ht stores the values */
 		t2_entries -= t2_tocopy;
 	}
-	snap_detach_action((void*)action);
 	gettimeofday(&etime, NULL);
 
-	fprintf(stderr, "ReturnCode: %x\n"
-		"HashJoin took %lld usec\n", cjob.retc,
+	(cjob.retc == SNAP_RETC_SUCCESS) ? fprintf(stdout, "SUCCESS\n") : fprintf(stdout, "FAILED\n");
+        if (cjob.retc != SNAP_RETC_SUCCESS) {
+                fprintf(stderr, "err: Unexpected RETC=%x!\n", cjob.retc);
+                goto out_error2;
+        }
+
+	fprintf(stderr, "HashJoin took %lld usec\n", 
 		(long long)timediff_usec(&etime, &stime));
+       fprintf(stdout, "This time represents the register transfer time + hashjoin action time\n");
 
 	snap_detach_action(action);
 	snap_card_free(card);

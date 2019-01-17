@@ -41,12 +41,25 @@ PACKAGE snap_core_types IS
   CONSTANT IMP_VERSION_DAT                 : std_logic_vector(63 DOWNTO 0);  -- Implementation version
   CONSTANT BUILD_DATE_DAT                  : std_logic_vector(63 DOWNTO 0);  -- Build date
   CONSTANT NUM_OF_ACTIONS                  : integer RANGE 0 TO 16;          -- Number of implemented actions
+  CONSTANT DMA_XFER_SIZE                   : std_logic_vector(3 DOWNTO 0);   -- Minimum Size for DMA transfers to/from Host. Value s => minimum size is 2^s bytes.
+  CONSTANT DMA_ALIGNMENT                   : std_logic_vector(3 DOWNTO 0);   -- Data alignment for transfers to/from Host. Value a => 2^a bytes alignment
   CONSTANT SDRAM_SIZE                      : std_logic_vector(15 DOWNTO 0);  -- Size of attached on-card SDRAM in MB
   CONSTANT CARD_TYPE                       : std_logic_vector(7 DOWNTO 0);   -- Card type - currently specified:
-                                                                             --             0x00 Alphadata KU3
+                                                                             --             0x00 AlphaData KU3
                                                                              --             0x01 Nallatech 250S
-  CONSTANT NVME_ENABLED                    : std_logic;                      -- Is the NVMe host logic enabled for connecting to NVMe Flash drives
+                                                                             --             0x02 Semptian  S121B
+                                                                             --             0x03 AlphaData 8K5
+#ifdef CONFIG_ENABLE_NVME
+  CONSTANT NVME_ENABLED                    : std_logic := '1';                      -- Is the NVMe host logic enabled for connecting to NVMe Flash drives
+#else
+  CONSTANT NVME_ENABLED                    : std_logic := '0';                      -- Is the NVMe host logic enabled for connecting to NVMe Flash drives
+#endif
 
+#ifdef CONFIG_CAPI10
+  CONSTANT CAPI_VER                        : integer RANGE 1 TO 2 := 1;      --
+#else
+  CONSTANT CAPI_VER                        : integer RANGE 1 TO 2 := 2;      --
+#endif
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 -- ******************************************************
@@ -97,21 +110,32 @@ PACKAGE snap_core_types IS
   --
   -- AH Command Interface Encoding
   --
-  TYPE CMD_CODES_T IS (READ_CL_NA, READ_CL_S, READ_PE, READ_CL_M, READ_CL_LCK, READ_CL_RES, READ_PNA,
+  TYPE CMD_CODES_T IS (READ_CL_NA, READ_CL_S, READ_PE, READ_CL_M, READ_PNA,
                        TOUCH_I, TOUCH_S, TOUCH_M,
-                       WRITE_NA, WRITE_INJ, WRITE_MI, WRITE_MS, WRITE_UNLOCK, WRITE_C,
+                       WRITE_NA, WRITE_INJ, WRITE_MI, WRITE_MS,
                        PUSH_I, PUSH_S,
-                       EVICT_I, RESERVED,
+                       EVICT_I,
+#ifdef CONFIG_CAPI10
+                       READ_CL_LCK, READ_CL_RES,
+                       WRITE_C, WRITE_UNLOCK,
                        LOCK, UNLOCK,
-                       FLUSH, INTREQ, RESTART);
+                       FLUSH,
+#else
+                       CAS_E_4B, CAS_NE_4B, CAS_U_4B,
+                       CAS_E_8B, CAS_NE_8B, CAS_U_8B,
+                       ZERO_M,
+                       XLAT_RD_P0, XLAT_WR_P0, XLAT_RD_P1, XLAT_WR_P1,
+                       ITAG_ABRT_RD, ITAG_ABRT_WR,
+                       XLAT_RD_TOUCH, XLAT_WR_TOUCH ,
+#endif
+                       INTREQ, RESTART,INVALID);
+
   TYPE ENCODING_CMD_CODES_ARRAY IS ARRAY(CMD_CODES_T) OF std_logic_vector(0 TO 12);
   CONSTANT ENCODE_CMD_CODES : ENCODING_CMD_CODES_ARRAY :=
     (READ_CL_NA    => '0' & x"A00",
      READ_CL_S     => '0' & x"A50",
      READ_PE       => '0' & x"A52",
      READ_CL_M     => '0' & x"A60",
-     READ_CL_RES   => '0' & x"A67",
-     READ_CL_LCK   => '0' & x"A6B",
      READ_PNA      => '0' & x"E00",
      TOUCH_I       => '0' & x"240",
      TOUCH_S       => '0' & x"250",
@@ -119,35 +143,68 @@ PACKAGE snap_core_types IS
      WRITE_NA      => '0' & x"D00",
      WRITE_INJ     => '0' & x"D10",
      WRITE_MI      => '0' & x"D60",
-     WRITE_C       => '0' & x"D67",
-     WRITE_UNLOCK  => '0' & x"D6B",
      WRITE_MS      => '0' & x"D70",
      PUSH_I        => '0' & x"140",
      PUSH_S        => '0' & x"150",
      EVICT_I       => '1' & x"140",
-     RESERVED      => '1' & x"260",
+#ifdef CONFIG_CAPI10
+     READ_CL_RES   => '0' & x"A67",
+     READ_CL_LCK   => '0' & x"A6B",
+     WRITE_C       => '0' & x"D67",
+     WRITE_UNLOCK  => '0' & x"D6B",
      LOCK          => '0' & x"16B",
      UNLOCK        => '0' & x"17B",
      FLUSH         => '0' & x"100",
+#else
+     CAS_E_4B      => '0' & x"180",
+     CAS_NE_4B     => '0' & x"181",
+     CAS_U_4B      => '0' & x"182",
+     CAS_E_8B      => '0' & x"183",
+     CAS_NE_8B     => '0' & x"184",
+     CAS_U_8B      => '0' & x"185",
+     ZERO_M        => '1' & x"260",
+     XLAT_RD_P0    => '1' & x"F00",
+     XLAT_WR_P0    => '1' & x"F01",
+     XLAT_RD_P1    => '1' & x"F08",
+     XLAT_WR_P1    => '1' & x"F09",
+     ITAG_ABRT_RD  => '1' & x"F02",
+     ITAG_ABRT_WR  => '1' & x"F03",
+     XLAT_RD_TOUCH => '1' & x"F10",
+     XLAT_WR_TOUCH => '1' & x"F11",
+#endif
      INTREQ        => '0' & x"000",
-     RESTART       => '0' & x"001");
+     RESTART       => '0' & x"001",
+     INVALID       => '1' & x"FFF");
 
   --
   -- HA Response Interface Encoding
   --
-  TYPE RSP_CODES_T IS (DONE, AERROR, DERROR, NLOCK, NRES, FLUSHED, FAULT, FAILED, PAGED, CONTXT, ILLEGAL_RSP);
+  TYPE RSP_CODES_T IS (DONE, AERROR, DERROR,
+                       FLUSHED, FAULT, FAILED, PAGED, CONTEXT,
+#ifdef CONFIG_CAPI10
+                       NLOCK, NRES,
+#else
+                       COMP_EQ, COMP_NEQ, COMP_INV,
+#endif
+                       ILLEGAL_RSP);
   TYPE CODING_RSP_ENCODES_ARRAY IS ARRAY (0 TO 255) OF RSP_CODES_T;
   CONSTANT ENCODE_RSP_CODES : CODING_RSP_ENCODES_ARRAY :=
     (     0 => DONE,
           1 => AERROR,
           3 => DERROR,
-          4 => NLOCK,
-          5 => NRES,
           6 => FLUSHED,
           7 => FAULT,
           8 => FAILED,
          10 => PAGED,
-         11 => CONTXT,
+         11 => CONTEXT,
+#ifdef CONFIG_CAPI10
+          4 => NLOCK,
+          5 => NRES,
+#else
+         12 => COMP_EQ,
+         13 => COMP_NEQ,
+         14 => COMP_INV,
+#endif
      OTHERS => ILLEGAL_RSP);
 
   --
@@ -273,14 +330,19 @@ PACKAGE snap_core_types IS
   CONSTANT SNAP_LOCK_INT              : integer :=  0;     -- SNAP_LOCK_REG
   CONSTANT SNAP_CTX_MASTER_BIT        : integer := 63;     -- SNAP_CTX_ID_REG
   CONSTANT SNAP_CTX_ID_R              : integer :=  0;     -- SNAP_CTX_ID_REG
-  CONSTANT SNAP_NVME_RST_L            : integer :=  4;     -- SNAP_RESET_REG
-  CONSTANT SNAP_NVME_RST_R            : integer :=  0;     -- SNAP_RESET_REG
+  CONSTANT SNAP_NVME_RESET            : integer :=  4;     -- SNAP_RESET_REG
+  CONSTANT SNAP_NVME_PERST_L          : integer :=  3;     -- SNAP_RESET_REG
+  CONSTANT SNAP_NVME_PERST_R          : integer :=  0;     -- SNAP_RESET_REG
+  CONSTANT SNAP_CAP_DMA_XFER_SIZE_L   : integer := 39;     -- SNAP_CAPABILITY_REG
+  CONSTANT SNAP_CAP_DMA_XFER_SIZE_R   : integer := 36;     -- SNAP_CAPABILITY_REG
+  CONSTANT SNAP_CAP_DMA_ALIGNMENT_L   : integer := 35;     -- SNAP_CAPABILITY_REG
+  CONSTANT SNAP_CAP_DMA_ALIGNMENT_R   : integer := 32;     -- SNAP_CAPABILITY_REG
   CONSTANT SNAP_CAP_SDRAM_SIZE_L      : integer := 31;     -- SNAP_CAPABILITY_REG
   CONSTANT SNAP_CAP_SDRAM_SIZE_R      : integer := 16;     -- SNAP_CAPABILITY_REG
   CONSTANT SNAP_CAP_NVME_ENABLED      : integer :=  8;     -- SNAP_CAPABILITY_REG
   CONSTANT SNAP_CAP_CARD_TYPE_L       : integer :=  7;     -- SNAP_CAPABILITY_REG
   CONSTANT SNAP_CAP_CARD_TYPE_R       : integer :=  0;     -- SNAP_CAPABILITY_REG
-  
+
   CONSTANT SNAP_DBG_AH_PAREN          : integer :=  0;     -- SNAP_DEBUG_REG
 
   CONSTANT CTX_CFG_SIZE_INT           : integer := 39;     -- CONTEXT_CONFIG_REG
@@ -591,25 +653,25 @@ PACKAGE snap_core_types IS
     --  ha_b (from PSL)
     --
     TYPE HA_B_T IS RECORD
-      rvalid      : std_logic;                           -- Buffer Read valid
-      rtag        : std_logic_vector(7 DOWNTO 0);        -- Buffer Read tag
-      rtagpar     : std_logic;                           -- Buffer Read tag parity
-      rad         : std_logic_vector(5 DOWNTO 0);        -- Buffer Read address
-      wvalid      : std_logic;                           -- Buffer Write valid
-      wtag        : std_logic_vector(7 DOWNTO 0);        -- Buffer Write tag
-      wtagpar     : std_logic;                           -- Buffer Write tag parity
-      wad         : std_logic_vector(5   DOWNTO 0);      -- Buffer Write address
-      wdata       : std_logic_vector(511 DOWNTO 0);      -- Buffer Write data
-      wpar        : std_logic_vector(7   DOWNTO 0);      -- Buffer Write parity
+      rvalid      : std_logic;                                        -- Buffer Read valid
+      rtag        : std_logic_vector(7 DOWNTO 0);                     -- Buffer Read tag
+      rtagpar     : std_logic;                                        -- Buffer Read tag parity
+      rad         : std_logic_vector(5 DOWNTO 0);                     -- Buffer Read address
+      wvalid      : std_logic;                                        -- Buffer Write valid
+      wtag        : std_logic_vector(7 DOWNTO 0);                     -- Buffer Write tag
+      wtagpar     : std_logic;                                        -- Buffer Write tag parity
+      wad         : std_logic_vector(5   DOWNTO 0);                   -- Buffer Write address
+      wdata       : std_logic_vector((512*CAPI_VER)-1 DOWNTO 0);      -- Buffer Write data
+      wpar        : std_logic_vector((  8*CAPI_VER)-1 DOWNTO 0);      -- Buffer Write parity
     END RECORD HA_B_T;
 
     --
     --  ah_b (to   PSL)
     --
     TYPE AH_B_T IS RECORD
-      rlat        : std_logic_vector(3   DOWNTO 0);      -- Buffer Read latency
-      rdata       : std_logic_vector(511 DOWNTO 0);      -- Buffer Read data
-      rpar        : std_logic_vector(7   DOWNTO 0);      -- Buffer Read parity
+      rlat        : std_logic_vector(3   DOWNTO 0);                   -- Buffer Read latency
+      rdata       : std_logic_vector((512*CAPI_VER)-1 DOWNTO 0);      -- Buffer Read data
+      rpar        : std_logic_vector((  8*CAPI_VER)-1 DOWNTO 0);      -- Buffer Read parity
     END RECORD AH_B_T;
 
 
@@ -627,10 +689,16 @@ PACKAGE snap_core_types IS
       valid       : std_logic;                           -- Response valid
       tag         : std_logic_vector(7  DOWNTO 0);       -- Response tag
       tagpar      : std_logic;                           -- Response tag parity
-      response    : RSP_CODES_T;                          -- Response
+      response    : RSP_CODES_T;                         -- Response code
       credits     : std_logic_vector(8  DOWNTO 0);       -- Response credits
       cachestate  : std_logic_vector(1  DOWNTO 0);       -- Response cache state
       cachepos    : std_logic_vector(12 DOWNTO 0);       -- Response cache pos
+#ifdef CONFIG_CAPI20
+      ditag       : std_logic_vector(8  DOWNTO 0);       -- DMA Translation tag
+      ditagpar    : std_logic;                           -- DMA Translation tag parity
+      response_ext: std_logic_vector(7  DOWNTO 0);       -- Response extra response information
+      pagesize    : std_logic_vector(3  DOWNTO 0);       -- Command translated page size
+#endif
     END RECORD HA_R_T;
 
 
@@ -712,6 +780,53 @@ PACKAGE snap_core_types IS
       yield            : std_logic;                      -- Job yield
     END RECORD AH_J_T;
 
+#ifdef CONFIG_CAPI20
+  ------------------------------------------------------------------------------
+  ------------------------------------------------------------------------------
+  --  CAPI 2.0 DMA Interface
+  --
+  --  hd_s (from PSL) sent interface
+  --  hd_c (from PSL) completion interface
+  --  dh_d (to   PSL) request interface
+  ------------------------------------------------------------------------------
+  ------------------------------------------------------------------------------
+    --
+    -- hd_s (from PSL) sent interface
+    --
+    TYPE HD_S_T IS RECORD
+      utag_valid              : std_logic                  ;
+      utag                    : std_logic_vector(9 DOWNTO 0);
+      utag_sts                : std_logic_vector(2 DOWNTO 0);
+    END RECORD HD_S_T;
+
+    --
+    -- hd_c (from PSL) completion interface
+    --
+    TYPE HD_C_T IS RECORD
+      valid                    : std_logic                  ;
+      utag                     : std_logic_vector(9 DOWNTO 0)   ;
+      ctype                    : std_logic_vector(2 DOWNTO 0)   ;
+      size                     : std_logic_vector(9 DOWNTO 0)   ;
+      laddr                    : std_logic_vector(6 DOWNTO 0)   ;
+      byte_count               : std_logic_vector(9 DOWNTO 0)   ;
+      data                     : std_logic_vector(1023 DOWNTO 0);
+    END RECORD HD_C_T;
+
+    --
+    -- dh_d (to   PSL) request interface
+    --
+    TYPE DH_D_T IS RECORD
+      valid                       : std_logic                  ;
+      req_utag                    : std_logic_vector(9 DOWNTO 0)   ;
+      req_itag                    : std_logic_vector(8 DOWNTO 0)   ;
+      req_type                    : std_logic_vector(2 DOWNTO 0)   ;
+      atomic_op                   : std_logic_vector(5 DOWNTO 0)   ;
+      atomic_le                   : std_logic                ;
+      size                        : std_logic_vector(9 DOWNTO 0)   ;
+      data                        : std_logic_vector(1023 DOWNTO 0);
+    END RECORD DH_D_T;
+#endif
+
 
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
@@ -719,15 +834,14 @@ PACKAGE snap_core_types IS
 -- ***** AFU INTERNAL INTERFACE TYPES               *****
 -- ******************************************************
 --
---  dj_c : dma         -> job_mgr     : Command Interface
---  dj_d : dma         -> job_mgr     : Data Interface
---  db_c : dma         -> data_bridge : Command Interface
---  db_d : dma         -> data_bridge : Data Interface
+--  cd_c : ctrl_mgr    -> dma         : Control Interface
+--  cmm_c: ctrl_mgr    -> mmio        : Control Interface
+--  cmm_e: ctrl_mgr    -> mmio        : Error Interface
+--
+--  dmm_c: dma         -> mmio        : Control Interface
 --  dmm_e: dma         -> mmio        : Error Interface
 --  ds_c : dma         -> AXI slave   : Control Interface
 --  ds_d : dma         -> AXI slave   : Data Interface
---
---  cmm_e: ctrl_mgr    -> mmio        : Error Interface
 --
 --  jmm_c: job_manager -> mmio        : Control Interface
 --  jmm_d: job_manager -> mmio        : Data Interface
@@ -735,8 +849,10 @@ PACKAGE snap_core_types IS
 --  jx_c : job_manager -> AXI master  : Control Interface
 --
 --  mmc_c: mmio        -> ctrl_mgr    : Control Interface
+--  mmc_d: mmio        -> ctrl_mgr    : Data Interface
 --  mmc_e: mmio        -> ctrl_mgr    : Error Interface
 --  mmd_a: mmio        -> dma         : Aggravater Interface
+--  mmd_c: mmio        -> dma         : Control Interface
 --  mmd_i: mmio        -> dma         : Error Inject
 --  mmj_c: mmio        -> job_manager : Control Interface
 --  mmj_d: mmio        -> job_manager : Data Interface
@@ -748,38 +864,56 @@ PACKAGE snap_core_types IS
 --  sd_d : AXI slave   -> dma         : Data Interface
 --  sj_c : AXI slave   -> job_manager : Control Interface
 --
---  xmm_d: AXI master  -> mmio        : Data Interface
 --  xj_c : AXI master  -> job_mgr     : Control Interface
+--  xmm_d: AXI master  -> mmio        : Data Interface
 --  xn_d : AXI master  -> NVMe        : Data Interface
 --
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
+  ---------------------------------------------------------------------------
+  ----------------------------------------------------------------------------
+  --  CTRL Manager Interface
+  ----------------------------------------------------------------------------
+  ----------------------------------------------------------------------------
+    --
+    -- cd_c
+    --
+    TYPE CD_C_T IS RECORD
+      quiesce_request    : std_logic;
+      quiesce_release    : std_logic;
+      quiesce_context_id : std_logic_vector(CONTEXT_BITS-1 DOWNTO 0);
+    END RECORD CD_C_T;
+
+    --
+    -- cmm_c
+    --
+    TYPE CMM_C_T IS RECORD
+      terminate_request    : std_logic;
+      terminate_context_id : std_logic_vector(CONTEXT_BITS-1 DOWNTO 0);
+    END RECORD;
+
+    --
+    -- cmm_e
+    --
+    TYPE CMM_E_T IS RECORD
+      ctrl_fsm_err     : std_logic;
+      com_parity_err   : std_logic;
+      ea_parity_err    : std_logic;
+    END RECORD;
+
+
   ----------------------------------------------------------------------------
   ----------------------------------------------------------------------------
   --  DMA Interface
   ----------------------------------------------------------------------------
   ----------------------------------------------------------------------------
     --
-    -- ds_c
+    -- dmm_c
     --
-    TYPE DS_C_T IS RECORD
-      wr_req_ack        : std_logic;
-      rd_req_ack        : std_logic;
-      wr_id_valid       : std_logic;
-      wr_id             : std_logic_vector(C_S_AXI_ID_WIDTH - 1 DOWNTO 0);     -- action ID
-      int_req_ack       : std_logic;
-    END RECORD DS_C_T;
-
-    --
-    -- ds_d
-    --
-    TYPE DS_D_T IS RECORD
-      rd_data_strobe    : std_logic;                                           -- valid
-      rd_last           : std_logic;
-      rd_data           : std_logic_vector(C_S_AXI_DATA_WIDTH - 1 DOWNTO 0);   -- data
-      rd_id             : std_logic_vector(C_S_AXI_ID_WIDTH - 1 DOWNTO 0);     -- action ID
-      wr_data_ready     : std_logic;
-    END RECORD DS_D_T;
+    TYPE DMM_C_T IS RECORD
+      action_reset_req        : std_logic;
+      action_reset_context_id : std_logic_vector(CONTEXT_BITS-1 DOWNTO 0);
+    END RECORD DMM_C_T;
 
     --
     -- dmm_e
@@ -811,20 +945,27 @@ PACKAGE snap_core_types IS
       waddr_err           : std_logic;
     END RECORD DMM_E_T;
 
+    --
+    -- ds_c
+    --
+    TYPE DS_C_T IS RECORD
+      wr_req_ack        : std_logic;
+      rd_req_ack        : std_logic;
+      wr_id_valid       : std_logic;
+      wr_id             : std_logic_vector(C_S_AXI_ID_WIDTH - 1 DOWNTO 0);     -- action ID
+      int_req_ack       : std_logic;
+    END RECORD DS_C_T;
 
-  ---------------------------------------------------------------------------
-  ----------------------------------------------------------------------------
-  --  CTRL Interface
-  ----------------------------------------------------------------------------
-  ----------------------------------------------------------------------------
     --
-    -- cmm_e
+    -- ds_d
     --
-    TYPE CMM_E_T IS RECORD
-      ctrl_fsm_err     : std_logic;
-      com_parity_err   : std_logic;
-      ea_parity_err    : std_logic;
-    END RECORD;
+    TYPE DS_D_T IS RECORD
+      rd_data_strobe    : std_logic;                                           -- valid
+      rd_last           : std_logic;
+      rd_data           : std_logic_vector(C_S_AXI_DATA_WIDTH - 1 DOWNTO 0);   -- data
+      rd_id             : std_logic_vector(C_S_AXI_ID_WIDTH - 1 DOWNTO 0);     -- action ID
+      wr_data_ready     : std_logic;
+    END RECORD DS_D_T;
 
 
   ---------------------------------------------------------------------------
@@ -880,8 +1021,16 @@ PACKAGE snap_core_types IS
     -- mmc_c
     --
     TYPE MMC_C_T IS RECORD
-      reset_done : std_logic;
+      reset_done        : std_logic;
+      action_reset_done : std_logic;
     END RECORD MMC_C_T;
+
+    --
+    -- mmc_d
+    --
+    TYPE MMC_D_T IS RECORD
+      attached_contexts : std_logic_vector(NUM_OF_CONTEXTS-1 DOWNTO 0);
+    END RECORD MMC_D_T;
 
     --
     -- mmc_e
@@ -891,13 +1040,21 @@ PACKAGE snap_core_types IS
     END RECORD MMC_E_T;
 
     --
-    --
     -- mmd_a
+    --
     TYPE MMD_A_T IS RECORD
       thr_read_fsm        : std_logic;
       thr_write_fsm       : std_logic;
       thr_cmd_fsm         : std_logic;
     END RECORD MMD_A_T;
+
+    --
+    -- mmd_c
+    --
+    TYPE MMD_C_T IS RECORD
+      quiesce_request    : std_logic;
+      quiesce_context_id : std_logic_vector(CONTEXT_BITS-1 DOWNTO 0);
+    END RECORD MMD_C_T;
 
     --
     -- mmd_i
@@ -920,6 +1077,7 @@ PACKAGE snap_core_types IS
       exploration_done          : std_logic;
       max_sat                   : integer RANGE 0 TO NUM_OF_ACTION_TYPES-1;
       last_seqno                : std_logic;
+      action_reset_vector       : std_logic_vector(NUM_OF_ACTIONS-1 DOWNTO 0);
       action_ack                : std_logic;
     END RECORD;
 
@@ -996,6 +1154,14 @@ PACKAGE snap_core_types IS
   ----------------------------------------------------------------------------
   ----------------------------------------------------------------------------
     --
+    -- xj_c
+    --
+    TYPE XJ_C_T IS RECORD
+      valid               : std_logic;
+      action              : std_logic_vector(ACTION_BITS-1 DOWNTO 0);
+    END RECORD XJ_C_T;
+
+    --
     -- xmm_d
     --
     TYPE XMM_D_T IS RECORD
@@ -1003,14 +1169,6 @@ PACKAGE snap_core_types IS
       ack                 : std_logic;
       error               : std_logic_vector( 1 DOWNTO 0);
     END RECORD XMM_D_T;
-
-    --
-    -- xj_c
-    --
-    TYPE XJ_C_T IS RECORD
-      valid               : std_logic;
-      action              : std_logic_vector(ACTION_BITS-1 DOWNTO 0);
-    END RECORD XJ_C_T;
 
     --
     -- nx_d

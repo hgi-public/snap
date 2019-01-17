@@ -38,9 +38,52 @@ $(error Please make sure that $$SNAP_ROOT is set up correctly.)
 endif
 endif
 
-projs += snap_nvme_example
+# Use rule defined in software.mk
+all: all_build
 
-# If you have the host code outside of the default snap directory structure,
-# change to /path/to/snap/actions/software.mk
-#include ../../software.mk
+snap_cblk_LDFLAGS += -L. \
+	-Wl,-rpath,$(SNAP_ROOT)/actions/hdl_nvme_example/sw
+
+snap_cblk_libs += -lsnapcblk -lrt
+snap_cblk_objs += force_cpu.o
+
+snap_cblk: force_cpu.o $(projB)
+
+MAJOR_VERSION=1
+libversion:=$(MAJOR_VERSION).0
+
+libnameB = libsnapcblk
+projB = $(libnameB).a \
+	$(libnameB).so.$(libversion)
+
+# We need -fPIC for shared library build
+snapblock_CPPFLAGS += -fPIC
+pp_CPPFLAGS += -fPIC
+
+srcB = snapblock.c pp.c
+objsB = $(srcB:.c=.o)
+libsB += $(LDLIBS)
+
+### libB
+__$(libnameB).o: $(objsB)
+	$(LD) $(XLDFLAGS) -r -o $@ $^
+
+$(libnameB).a: __$(libnameB).o
+	$(AR) rcs $@ $^
+
+$(libnameB).so:  $(libnameB).so.$(libversion)
+	ln -sf $< $@
+
+$(libnameB).so.$(MAJOR_VERSION): $(libnameB).so.$(libversion)
+	ln -sf $< $@
+# SONAMEB=-Wl,-soname,$(libnameB).so.$(MAJOR_VERSION)
+
+$(libnameB).so.$(libversion): __$(libnameB).o
+	$(CC) $(LDFLAGS) -shared  $(SONAMEB) \
+		-Wl,-rpath,$(SNAP_ROOT)/software/lib \
+		-o $@ $^ $(libsB)
+
+projs += snap_nvme_example snap_cblk
+libs += $(projB)
+
 include $(SNAP_ROOT)/actions/software.mk

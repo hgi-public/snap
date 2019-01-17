@@ -25,16 +25,20 @@
 # relative path settings nicely. If that does not work for some valid reason,
 # we should discuss creating a new generic.mk or alike file.
 #
+
 PLATFORM ?= $(shell uname -i)
+export SNAP_ROOT=$(abspath ..)
+
+-include ../snap_env.sh
 
 ifeq ($(PLATFORM),x86_64)
 BUILD_SIMCODE=1
+endif
 
 ifndef PSLSE_ROOT
 # Environment variable PSLSE_ROOT defined by hardware setup scripts.
 # Use default path if PSLSE_ROOT is not defined.
 PSLSE_ROOT=$(abspath ../../pslse)
-endif
 endif
 
 distro = $(shell lsb_release -d | cut -f2)
@@ -45,24 +49,25 @@ all: $(subdirs)
 # Rules for the recursive build
 tools: lib
 
-PLATFORM ?= $(shell uname -i)
-ifeq ($(PLATFORM),x86_64)
-BUILD_SIMCODE=1
-endif
-
 ifdef BUILD_SIMCODE
-lib:  $(PSLSE_ROOT)/libcxl/libcxl.a
+lib:  $(PSLSE_ROOT)/libcxl/libcxl.so
 
-$(PSLSE_ROOT)/libcxl/libcxl.a:
-	$(MAKE) -C $(PSLSE_ROOT)/libcxl
+$(PSLSE_ROOT)/libcxl/libcxl.so:
+	$(MAKE) -C `dirname $@`
 endif
 
 # Only build if the subdirectory is really existent
 .PHONY: $(subdirs) install
-$(subdirs):
+$(subdirs): ..check_platform
 	@if [ -d $@ ]; then				\
 		$(MAKE) -C $@ C=0 || exit 1;		\
 	fi
+
+# If we find a SNAP binary which is not executable, automatically
+# clean up, such that we get a new build.
+..check_platform:
+	@${SNAP_ROOT}/check_platform.sh || \
+	(echo "info: Non executable snap_maint! Rebuild required." && $(MAKE) clean)
 
 # Install/uninstall
 install uninstall:

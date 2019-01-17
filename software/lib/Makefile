@@ -14,16 +14,26 @@
 # limitations under the License.
 #
 
+ifndef SNAP_ROOT
+ifneq ("$(wildcard ../../ActionTypes.md)","")
+SNAP_ROOT=$(abspath ../../)
+else
+$(info You probably have defined a wrong $$SNAP_ROOT.)
+$(error Please make sure that $$SNAP_ROOT is set up correctly.)
+endif
+endif
+
 include ../config.mk
 
 libversion = $(VERSION)
 
 CFLAGS += -fPIC -fno-strict-aliasing
-LDLIBS += -lpthread
+LDLIBS += -lcxl -lpthread
 
-# Link statically for PSLSE simulation and dynamically for real version
-ifndef BUILD_SIMCODE
-LDLIBS += -lcxl
+ifdef BUILD_SIMCODE
+CFLAGS += -D_SIM_
+LDFLAGS += -L$(PSLSE_ROOT)/libcxl -Wl,-rpath,$(PSLSE_ROOT)/libcxl
+LIBS += $(PSLSE_ROOT)/libcxl/libcxl.so
 endif
 
 libnameA = libsnap
@@ -32,25 +42,19 @@ projA = $(libnameA).a \
 	$(libnameA).so.$(MAJOR_VERSION) \
 	$(libnameA).so.$(libversion)
 
-libnameB = libsnapcblk
-projB = $(libnameB).a \
-	$(libnameB).so \
-	$(libnameB).so.$(MAJOR_VERSION) \
-	$(libnameB).so.$(libversion)
-
 srcA = snap.c
 objsA = $(srcA:.c=.o)
-libsB += $(LDLIBS)
 
-srcB = snapblock.c
-objsB = $(srcB:.c=.o)
-libsB += -L. -lsnap $(LDLIBS)
-
-projs += $(projA) $(projB)
+projs += $(projA)
 
 all: $(projs)
 
-$(projB): $(projA)
+ifdef BUILD_SIMCODE
+$(projs): $(PSLSE_ROOT)/libcxl/libcxl.so
+
+$(PSLSE_ROOT)/libcxl/libcxl.so:
+	$(MAKE) -C `dirname $@`
+endif
 
 ### libA
 __$(libnameA).o: $(objsA)
@@ -68,37 +72,18 @@ $(libnameA).so.$(MAJOR_VERSION): $(libnameA).so.$(libversion)
 
 $(libnameA).so.$(libversion): __$(libnameA).o
 	$(CC) $(LDFLAGS) -shared  $(SONAMEA) \
-		 -o $@ $^ $(libsA)
-
-### libB
-__$(libnameB).o: $(objsB)
-	$(LD) $(XLDFLAGS) -r -o $@ $^
-
-$(libnameB).a: __$(libnameB).o
-	$(AR) rcs $@ $^
-
-$(libnameB).so:  $(libnameB).so.$(libversion)
-	ln -sf $< $@
-
-$(libnameB).so.$(MAJOR_VERSION): $(libnameB).so.$(libversion)
-	ln -sf $< $@
-# SONAMEB=-Wl,-soname,$(libnameB).so.$(MAJOR_VERSION)
-
-$(libnameB).so.$(libversion): __$(libnameB).o
-	$(CC) $(LDFLAGS) -shared  $(SONAMEB) \
-		 -o $@ $^ $(libsB)
+		 -o $@ $^ $(libsA) $(LDLIBS)
 
 install: all
 	mkdir -p $(LIB_INSTALL_PATH)
 	cp -auv $(projA) $(LIB_INSTALL_PATH)
-	cp -auv $(projB) $(LIB_INSTALL_PATH)
 
 # general things
 %.o: %.c
-	$(CC) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
-	$(CC) -MM $(CPPFLAGS) $(CFLAGS) $< > $*.d
+	$(CC) -c $(CPPFLAGS) $($(@:.o=)_CPPFLAGS) $(CFLAGS) $< -o $@
+	$(CC) -MM $(CPPFLAGS) $($(@:.o=)_CPPFLAGS) $(CFLAGS) $< > $*.d
 
 clean distclean:
-	$(RM) *.o *.d $(projs) *.so *.so.*
+	$(RM) *.o *.d $(projs) *.so *.so.* *~
 
 -include $(objsA:.o=.d) $(objsB:.o=.d)

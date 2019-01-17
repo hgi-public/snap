@@ -1,5 +1,5 @@
 /**
- * Copyright 2016, 2017 International Business Machines
+ * Copyright 2016, 2018 International Business Machines
  * Copyright 2016 Rackspace Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <endian.h>
 #include <sys/time.h>
 
 #include <libsnap.h>
@@ -29,8 +30,8 @@
 #include <snap_tools.h>
 #include <snap_internal.h>
 #include <snap_queue.h>
-#include <snap_s_regs.h>	/* Include SNAP Slave Regs */
-#include <snap_hls_if.h>	/* Include SNAP -> HLS */
+#include <snap_s_regs.h>    /* Include SNAP Slave Regs */
+#include <snap_hls_if.h>    /* Include SNAP -> HLS */
 
 
 /* Trace hardware implementation */
@@ -38,46 +39,56 @@ static unsigned int snap_trace = 0x0;
 static unsigned int snap_config = 0x0;
 static struct snap_sim_action *actions = NULL;
 
-#define snap_trace_enabled()  (snap_trace & 0x01)
-#define reg_trace_enabled()   (snap_trace & 0x02)
-#define sim_trace_enabled()   (snap_trace & 0x04)
-#define poll_trace_enabled()  (snap_trace & 0x10)
+#define snap_trace_enabled()  (snap_trace & 0x0001)
+#define reg_trace_enabled()   (snap_trace & 0x0002)
+#define sim_trace_enabled()   (snap_trace & 0x0004)
+#define poll_trace_enabled()  (snap_trace & 0x0010)
 
 int action_trace_enabled(void)
 {
-	return snap_trace & 0x08;
+	return snap_trace & 0x0008;
 }
 
 int block_trace_enabled(void)
 {
-	return snap_trace & 0x20;
+	return snap_trace & 0x0020;
 }
 
 int cache_trace_enabled(void)
 {
-	return snap_trace & 0x40;
+	return snap_trace & 0x0040;
 }
 
-#define simulation_enabled()  (snap_config & 0x01)
+int stat_trace_enabled(void)
+{
+	return snap_trace & 0x0080;
+}
 
-#define snap_trace(fmt, ...) do {					\
-		if (snap_trace_enabled())				\
-			fprintf(stderr, "D " fmt, ## __VA_ARGS__);	\
+int pp_trace_enabled(void)
+{
+	return snap_trace & 0x0100;
+}
+
+#define software_action_enabled()  (snap_config & 0x01)
+
+#define snap_trace(fmt, ...) do { \
+		if (snap_trace_enabled()) \
+			fprintf(stderr, "D " fmt, ## __VA_ARGS__); \
 	} while (0)
 
-#define reg_trace(fmt, ...) do {					\
-		if (reg_trace_enabled())				\
-			fprintf(stderr, "R " fmt, ## __VA_ARGS__);	\
+#define reg_trace(fmt, ...) do { \
+		if (reg_trace_enabled()) \
+			fprintf(stderr, "R " fmt, ## __VA_ARGS__); \
 	} while (0)
 
-#define sim_trace(fmt, ...) do {					\
-		if (sim_trace_enabled())				\
-			fprintf(stderr, "S " fmt, ## __VA_ARGS__);	\
+#define sim_trace(fmt, ...) do { \
+		if (sim_trace_enabled()) \
+			fprintf(stderr, "S " fmt, ## __VA_ARGS__); \
 	} while (0)
 
-#define poll_trace(fmt, ...) do {					\
-		if (poll_trace_enabled())				\
-			fprintf(stderr, "P " fmt, ## __VA_ARGS__);	\
+#define poll_trace(fmt, ...) do { \
+		if (poll_trace_enabled()) \
+			fprintf(stderr, "P " fmt, ## __VA_ARGS__); \
 	} while (0)
 
 #define	INVALID_SAT 0x0ffffffff
@@ -87,6 +98,7 @@ struct snap_card {
 	struct cxl_afu_h *afu_h;
 	bool master;                    /* True if this is Master Device */
 	int cir;                        /* Context id */
+	void *mmio_ptr;
 	uint32_t action_base;
 	uint16_t vendor_id;
 	uint16_t device_id;
@@ -106,21 +118,55 @@ struct snap_card {
 	unsigned int attach_timeout_sec;
 	unsigned int queue_length;      /* unused */
 	uint64_t cap_reg;               /* Capability Register */
+	const char *name;               /* Card name */
 };
+
+/* Translate Card ID to Name */
+struct card_2_name {
+	const int card_id;
+	const char card_name[16];
+};
+/* Limit Card names to max of 15 Bytes */
+struct card_2_name snap_card_2_name_tab[] = {
+	{.card_id = ADKU3_CARD,  .card_name = "ADKU3"},
+	{.card_id = N250S_CARD,  .card_name = "N250S"},
+	{.card_id = S121B_CARD,  .card_name = "S121B"},
+	{.card_id = AD8K5_CARD,  .card_name = "AD8K5"},
+	{.card_id = N250SP_CARD, .card_name = "N250SP"},
+	{.card_id = RCXVUP_CARD, .card_name = "RCXVUP"},
+	{.card_id = FX609_CARD,  .card_name = "FX609"},
+	{.card_id = S241_CARD,   .card_name = "S241"},
+	{.card_id = AD9V3_CARD,  .card_name = "AD9V3"},
+	{.card_id = -1,          .card_name = "INVALID"}
+};
+
+/* Search snap_card_2_name_tab to for card name */
+static const char* snap_card_id_2_name(int card_id)
+{
+	int i = 0;
+
+	while(-1 != snap_card_2_name_tab[i].card_id) {
+		if (card_id == snap_card_2_name_tab[i].card_id)
+			break;
+		i++;
+	}
+	/* Return card name */
+	return snap_card_2_name_tab[i].card_name;
+}
 
 /* To be used for software simulation, use funcs provided by action */
 static int snap_map_funcs(struct snap_card *card,
 			  snap_action_type_t action_type);
 
 /*	Get Time in msec */
-static unsigned int tget_ms(void)
+static unsigned long tget_ms(void)
 {
 	struct timeval now;
-	unsigned int tms;
+	unsigned long tms;
 
 	gettimeofday(&now, NULL);
-	tms = (unsigned int)(now.tv_sec * 1000) +
-		(unsigned int)(now.tv_usec / 1000);
+	tms = (unsigned long)(now.tv_sec * 1000) +
+		(unsigned long)(now.tv_usec / 1000);
 	return tms;
 }
 
@@ -172,18 +218,17 @@ static void *hw_snap_card_alloc_dev(const char *path,
 			goto __snap_alloc_err;
 		}
 		dn->device_id = (uint16_t)id;
-        }
+	}
 
 	rc = cxl_errinfo_size(afu_h, &dn->errinfo_size);
 	if (0 == rc) {
 		dn->errinfo = malloc(dn->errinfo_size);
-                if (NULL == dn->errinfo) {
-			perror("malloc");
-			goto __snap_alloc_err;
-                }
-        } else
+			if (NULL == dn->errinfo) {
+				perror("malloc");
+				goto __snap_alloc_err;
+			}
+	} else
 		snap_trace("  %s: WARN Can not detect Err buffer\n", __func__);
-
 
 	snap_trace("  %s: errinfo_size: %d VendorID: %x DeviceID: %x\n", __func__,
 		(int)dn->errinfo_size, (int)vendor_id, (int)device_id);
@@ -197,6 +242,13 @@ static void *hw_snap_card_alloc_dev(const char *path,
 		goto __snap_alloc_err;
 	}
 
+#if !defined(_SIM_)
+	rc = cxl_mmio_ptr(afu_h, &dn->mmio_ptr);
+	if (rc != 0)
+		fprintf(stderr, "[%s] cannot get mmio_ptr rc=%d %s\n",
+			__func__, rc, strerror(errno));
+#endif
+
 	dn->action_base = 0;
 	cxl_mmio_read64(afu_h, SNAP_S_CIR, &reg);
 	if (0x8000000000000000 & reg)
@@ -207,10 +259,12 @@ static void *hw_snap_card_alloc_dev(const char *path,
 	/* Read and save Capability reg */
 	cxl_mmio_read64(afu_h, SNAP_S_CAP, &reg);
 	dn->cap_reg = reg;
+	/* Get SNAP Card Name */
+	dn->name = snap_card_id_2_name((int)(reg&0xff));
 
 	dn->afu_h = afu_h;
-	snap_trace("%s Exit %p OK Context: %d Master: %d\n", __func__,
-		dn, dn->cir, dn->master);
+	snap_trace("%s Exit %p OK Context: %d Master: %d Card: %s\n", __func__,
+		dn, dn->cir, dn->master, dn->name);
 	return (struct snap_card *)dn;
 
  __snap_alloc_err:
@@ -235,7 +289,10 @@ static int hw_snap_mmio_write32(struct snap_card *card,
 		reg_trace("  %s(%p, %llx, %lx)\n", __func__, card,
 			(long long)offset, (long)data);
 		rc = cxl_mmio_write32(card->afu_h, offset, data);
-	} else reg_trace("  %s Error\n", __func__);
+	} else {
+		reg_trace("  %s Error\n", __func__);
+		errno = EINVAL;
+	}
 
 	return rc;
 }
@@ -251,10 +308,40 @@ static int hw_snap_mmio_read32(struct snap_card *card,
 		rc = cxl_mmio_read32(card->afu_h, offset, data);
 		reg_trace("  %s(%p, %llx, %lx) %d\n", __func__, card,
 			(long long)offset, (long)*data, rc);
-	} else reg_trace("  %s Error\n", __func__);
+	} else {
+		reg_trace("  %s Error\n", __func__);
+		errno = EINVAL;
+	}
 
 	return rc;
 }
+
+#if !defined(_SIM_)
+/**
+ * FIXME Currently experimental use. We like to figure out if extensive
+ *       use of hwsync has negative impact on performance when # threads
+ *       raises up.
+ */
+int snap_mmio_read32_nohwsync(struct snap_card *card,
+		uint64_t offset, uint32_t *data)
+{
+	int rc = -1;
+
+	if ((!card) || (!card->afu_h)) {
+		reg_trace("  %s Error\n", __func__);
+		errno = EINVAL;
+		return -1;
+	}
+
+	offset += card->action_base; /* FIXME use action_*32 instead */
+	*data = be32toh(*(uint32_t *)(card->mmio_ptr + offset));
+
+	reg_trace("  %s(%p, %llx, %lx) %d\n", __func__, card,
+		(long long)offset, (long)*data, rc);
+
+	return 0;
+}
+#endif
 
 static int hw_snap_mmio_write64(struct snap_card *card,
 				uint64_t offset, uint64_t data)
@@ -263,8 +350,11 @@ static int hw_snap_mmio_write64(struct snap_card *card,
 
 	reg_trace("  %s(%p, %llx, %llx)\n", __func__, card,
 		  (long long)offset, (long long)data);
-	if ((card) && (card->afu_h))
+	if ((card) && (card->afu_h)) {
 		rc = cxl_mmio_write64(card->afu_h, offset, data);
+	} else {
+		errno = EINVAL;
+	}
 	return rc;
 }
 
@@ -273,9 +363,11 @@ static int hw_snap_mmio_read64(struct snap_card *card,
 {
 	int rc = -1;
 
-	if ((card) && (card->afu_h))
+	if ((card) && (card->afu_h)) {
 		rc = cxl_mmio_read64(card->afu_h, offset, data);
-
+	} else {
+		errno = EINVAL;
+	}
 	reg_trace("  %s(%p, %llx, %llx) %d\n", __func__, card,
 		  (long long)offset, (long long)*data, rc);
 
@@ -330,7 +422,13 @@ __hw_wait_irq_retry:
 	if (0 == rc) {
 		rc = cxl_read_event(card->afu_h, &card->event);
 		//cxl_fprint_event(stdout, card->event);
+		if (rc < 0) {
+			snap_trace("  %s: cxl_read_event returned %d\n", __func__, rc);
+			goto err_out;
+		}
+
 		switch (card->event.header.type) {
+
 		case CXL_EVENT_AFU_INTERRUPT:
 			snap_trace("  %s:     Got Event flags: %d irq: %d\n", __func__,
 				card->event.irq.flags,
@@ -341,7 +439,17 @@ __hw_wait_irq_retry:
 			}
 			rc = 0;
 			break;
-		case CXL_EVENT_DATA_STORAGE:
+
+		case CXL_EVENT_DATA_STORAGE:  {
+			struct cxl_event_data_storage *ds = &card->event.fault;
+
+			snap_trace("  %s: CXL_EVENT_DATA_STORAGE\n", __func__);
+			snap_trace("      flags=%04x addr=%08llx dsisr=%08llx\n",
+				ds->flags, (long long)ds->addr, (long long)ds->dsisr);
+			rc = EFAULT;
+			break;
+		}
+
 		case CXL_EVENT_AFU_ERROR:
 		//case CXL_EVENT_READ_FAIL:
 		default:
@@ -353,6 +461,8 @@ __hw_wait_irq_retry:
 			break;
 		}
 	}
+
+ err_out:
 	snap_trace("  %s: Exit fd: %d rc: %d\n", __func__,
 		card->afu_fd, rc);
 	return rc;
@@ -368,7 +478,8 @@ static struct snap_action *hw_attach_action(struct snap_card *card,
 	uint32_t mode;
 	uint32_t sat = INVALID_SAT;     /* Invalid short Action type */
 	int maid;                       /* Max Acition Id's */
-	int t0, dt;
+	unsigned long t0;               /* Time in msec */
+	int dt;
 	struct snap_action *action = NULL;
 
 	if (card == NULL) {
@@ -384,7 +495,7 @@ static struct snap_action *hw_attach_action(struct snap_card *card,
 	if (card->master) {
 		snap_trace("%s Exit Error Master is not allowed to use "
 			   "Action\n",  __func__);
-		errno = -ENODEV;
+		errno = ENODEV;
 		return NULL;
 	}
 
@@ -400,7 +511,7 @@ static struct snap_action *hw_attach_action(struct snap_card *card,
 		if (0x100 != (data & 0x100)) {
 			snap_trace("%s Error AFU SLAVE need's setup\n",
 				   __func__);
-			errno = -ENODEV;
+			errno = ENODEV;
 			return NULL;
 		}
 		maid = (int)(data & 0xf) + 1;	/* Max Actions */
@@ -418,7 +529,7 @@ static struct snap_action *hw_attach_action(struct snap_card *card,
 		if (INVALID_SAT == sat) {
 			snap_trace("%s Exit Error Can not find Action\n",
 				   __func__);
-			errno = -ENODEV;
+			errno = ENODEV;
 			return NULL;
 		}
 
@@ -437,6 +548,7 @@ static struct snap_action *hw_attach_action(struct snap_card *card,
 		/* Short Action Type and Direct Access */
 		hw_snap_mmio_write64(card, SNAP_S_CCR, data);
 		card->start_attach = true;
+		card->attach_timeout_sec = timeout_sec; /* Save timeout */ 
 	}
 
 	if (card->start_attach) {
@@ -454,13 +566,13 @@ static struct snap_action *hw_attach_action(struct snap_card *card,
 		t0 = tget_ms();
 		dt = 0;
 		rc = EBUSY;
-		while (dt < (timeout_sec*1000)) {
+		while (dt < (timeout_sec * 1000)) {
 			hw_snap_mmio_read64(card, SNAP_S_CSR, &data);
-			if (0xC0 == (data & 0xC0)) {
+			if (SNAP_CSR_ATTACHED == (data & SNAP_CSR_ATTACHED)) {
 				rc = 0;
 				break;
 			}
-			dt = tget_ms() - t0;
+			dt = (int)(tget_ms() - t0);
 		}
 	}
 	/* Return Pointer if all went well */
@@ -477,25 +589,50 @@ static struct snap_action *hw_attach_action(struct snap_card *card,
 static int hw_detach_action(struct snap_action *action)
 {
 	int rc = 0;
-	uint64_t data;
-	struct snap_card *card = (struct snap_card *)action;
+	uint64_t data = 0;
+	uint32_t action_control = 0;
+	struct snap_card *card;
+	unsigned long t0;
+	unsigned int dt = 0;
 
 	if (action == NULL) {
+		snap_trace("%s Error NULL Action\n", __func__);
 		errno = EINVAL;
 		return -1;
 	}
+	card = (struct snap_card *)action;
+	snap_trace("%s Enter Action: 0x%x "
+		   "Base: %x timeout: %d sec Seq: 0x%x\n",
+		   __func__, card->action_type, card->action_base,
+		   card->attach_timeout_sec, card->seq);
 
 	card->start_attach = true;              /* Set Flag to Attach next Time again */
-	hw_snap_mmio_write64(card, SNAP_S_JCR, 2); /* Stop:  Detach action */
-	hw_snap_mmio_read64(card, SNAP_S_CSR, &data); /* Action Must be gone */
-	if (0 != (data & 0x40)) {               /* Check if Context is still
-						   attached to action */
-		snap_trace("%s Error: CSR 0x%llx\n",
-			   __func__, (long long)data);
-		rc = SNAP_EDETACH; /* FIXME Use libsnap return codes */
+
+	/* Read Action Control and check Action Status */
+	hw_snap_mmio_read32(card, ACTION_CONTROL, &action_control);
+	if (ACTION_CONTROL_IDLE & action_control)
+		data = SNAP_JCR_STOP;           /* Action is IDLE, send Stop */
+	else    data = SNAP_JCR_ABORT;          /* Action is not IDLE, send Abort */
+	hw_snap_mmio_write64(card, SNAP_S_JCR, data);
+
+	/* Wait until Action gets detached. */
+	rc = SNAP_EDETACH;
+	t0 = tget_ms();
+	while (dt < (card->attach_timeout_sec * 1000)) {
+		/* Check if Action is detached */
+		hw_snap_mmio_read64(card, SNAP_S_CSR, &data);
+		if (0 == (data & SNAP_CSR_ATT)) {
+			rc = 0;             /* Ok */
+			break;              /* Detached */
+		}
+		/* Action detach can take a while for ABORT */
+		usleep(1000);
+		dt = (unsigned int)(tget_ms() - t0);
 	}
 
-	card->action_base = 0;                  /* FIXME use action_*32 instead */
+	card->action_base = 0;              /* FIXME use action_*32 instead */
+	snap_trace("%s Exit: rc: %d CSR 0x%llx after: %d msec\n",
+		   __func__, rc, (long long)data, dt);
 	return rc;
 }
 
@@ -505,36 +642,60 @@ static int hw_card_ioctl(struct snap_card *card, unsigned int cmd, unsigned long
 	unsigned long rc_val = 0;
 	unsigned long *arg = (unsigned long *)parm;
 
+	if (NULL == arg) {
+		snap_trace("  %s Error Missing parm\n", __func__);
+		return -1;
+	}	
 	switch (cmd) {
 	case GET_CARD_TYPE:
 		rc_val = (unsigned long)(card->cap_reg & 0xff);
-		snap_trace("  %s CARD_TYPE: %d\n", __func__, (int)rc_val);
+		snap_trace("  %s GET CARD_TYPE: %d\n", __func__, (int)rc_val);
 		*arg = rc_val;
 		break;
 	case GET_NVME_ENABLED:
-		if (card->cap_reg & 0x100)
+		if (card->cap_reg & SNAP_NVME_ENA)
 			rc_val = 1;
 		else rc_val = 0;
-		snap_trace("  %s NVME: %d\n", __func__, (int)rc_val);
+		snap_trace("  %s GET NVME: %d\n", __func__, (int)rc_val);
 		*arg = rc_val;
 		break;
 	case GET_SDRAM_SIZE:
 		rc_val = (unsigned long)(card->cap_reg >> 16);   /* in MB */
+		rc_val = rc_val & 0xffff;    /* Mask bits 16 ... 31 */
 		snap_trace("  %s Get MEM: %d MB\n", __func__, (int)rc_val);
 		*arg = rc_val;
+		break;
+	case GET_DMA_ALIGN:
+		/* Data alignment for DMA transfers to/from Host */
+		/* Value a means that transfers need to be 2^a B aligned */
+		rc_val = (unsigned long)(card->cap_reg >> 32)&0xf;   /* Get Bits 32 .. 35 */
+		rc_val = 1 << rc_val;
+		snap_trace("  %s Get DMA align: %d Bytes\n", __func__, (int)rc_val);
+		*arg = rc_val;
+		break;
+	case GET_DMA_MIN_SIZE:
+		/* Minimum size for DMA transfers to/from Host */
+		/* Value t means that minimum transfer size is 2^t B */ 
+		rc_val = (unsigned long)(card->cap_reg >> 36)&0xf;   /* Get Bits 36 .. 39 */
+		rc_val = 1 << rc_val;
+		snap_trace("  %s Get DMA Min Size: %d Bytes\n", __func__, (int)rc_val);
+		*arg = rc_val;
+		break;
+	case GET_CARD_NAME:
+		snap_trace("  %s Get Card name: %s\n", __func__, card->name);
+		strcpy((char*)parm, card->name);
 		break;
 	case SET_SDRAM_SIZE:
 		card->cap_reg = (card->cap_reg & 0xffff) | (parm << 16);
 		snap_trace("  %s Set MEM: %d MB\n", __func__, (int)parm);
 		break;
 	default:
-		snap_trace("  %s Error\n", __func__);
+		snap_trace("  %s Invalid CMD %d Error\n", __func__, cmd);
 		*arg = 0;
 		rc = -1;
 		break;
 	}
 	return rc;
-
 }
 
 /* Hardware version of the lowlevel functions */
@@ -565,7 +726,7 @@ struct snap_action *snap_attach_action(struct snap_card *card,
 				       snap_action_flag_t action_flags,
 				       int timeout_ms)
 {
-	if (simulation_enabled())
+	if (software_action_enabled())
 		snap_map_funcs(card, action_type);
 
 	return df->attach_action(card, action_type, action_flags, timeout_ms);
@@ -584,13 +745,17 @@ int snap_detach_action(struct snap_action *action)
 int snap_mmio_write32(struct snap_card *_card,
 		      uint64_t offset, uint32_t data)
 {
-	return df->mmio_write32(_card, offset, data);
+	int rc;
+	rc = df->mmio_write32(_card, offset, data);
+	return rc;
 }
 
 int snap_mmio_read32(struct snap_card *_card,
 		     uint64_t offset, uint32_t *data)
 {
-	return df->mmio_read32(_card, offset, data);
+	int rc;
+	rc = df->mmio_read32(_card, offset, data);
+	return rc;
 }
 
 /*
@@ -599,35 +764,45 @@ int snap_mmio_read32(struct snap_card *_card,
 int snap_action_write32(struct snap_action *action,
 		      uint64_t offset, uint32_t data)
 {
+	int rc;
 	struct snap_card *card = (struct snap_card *)action;
 
 	if (card->action_base == 0) /* must be attached to make this work */
 		return SNAP_EATTACH;
 
-	return df->mmio_write32(card, card->action_base + offset, data);
+	rc = df->mmio_write32(card, card->action_base + offset, data);
+	return rc;
 }
 
 int snap_action_read32(struct snap_action *action,
 		     uint64_t offset, uint32_t *data)
 {
+	int rc;
 	struct snap_card *card = (struct snap_card *)action;
 
 	if (card->action_base == 0) /* must be attached to make this work */
 		return SNAP_EATTACH;
 
-	return df->mmio_read32(card, card->action_base + offset, data);
+	rc = df->mmio_read32(card, card->action_base + offset, data);
+	return rc;
 }
 
 int snap_mmio_write64(struct snap_card *_card,
 			uint64_t offset, uint64_t data)
 {
-	return df->mmio_write64(_card, offset, data);
+	int rc;
+
+	rc = df->mmio_write64(_card, offset, data);
+	return rc;
 }
 
 int snap_mmio_read64(struct snap_card *_card,
 		       uint64_t offset, uint64_t *data)
 {
-	return df->mmio_read64(_card, offset, data);
+	int rc;
+
+	rc = df->mmio_read64(_card, offset, data);
+	return rc;
 }
 
 
@@ -710,12 +885,26 @@ int snap_action_stop(struct snap_action *action __unused)
 	return 0;
 }
 
+int snap_action_is_idle(struct snap_action *action, int *rc)
+{
+	int _rc = 0;
+	uint32_t action_data = 0;
+	struct snap_card *card = (struct snap_card *)action;
+
+	_rc = snap_mmio_read32(card, ACTION_CONTROL, &action_data);
+	if (rc)
+		*rc = _rc;
+
+	return (action_data & ACTION_CONTROL_IDLE) == ACTION_CONTROL_IDLE;
+}
+
 int snap_action_completed(struct snap_action *action, int *rc, int timeout)
 {
 	int _rc = 0;
 	uint32_t action_data = 0;
 	struct snap_card *card = (struct snap_card *)action;
-	int t0, dt, timeout_ms;
+	unsigned long t0;
+	int dt, timeout_ms;
 
 	if (SNAP_ACTION_DONE_IRQ & card->flags) {
 		hw_wait_irq(card, timeout, SNAP_ACTION_IRQ_NUM);
@@ -732,31 +921,30 @@ int snap_action_completed(struct snap_action *action, int *rc, int timeout)
 			_rc = snap_mmio_read32(card, ACTION_CONTROL, &action_data);
 			if ((action_data & ACTION_CONTROL_IDLE) == ACTION_CONTROL_IDLE)
 				break;
-			dt = tget_ms() - t0;
+			dt = (int)(tget_ms() - t0);
 		}
 	}
 	if (rc)
 		*rc = _rc;
 
+	// Test the rc in calling function for normal or timeout (rc=0) termination
 	return (action_data & ACTION_CONTROL_IDLE) == ACTION_CONTROL_IDLE;
 }
 
 /**
- * Synchronous way to send a job away. Blocks until job is done.
- *
- * FIXME Example Code not working yet. Needs fixups and discussion.
+ * Synchronous way to send a job away.  First step : set registers
+ * This function writes through MMIO interface the registers
+ * to the action / in the FPGA internal memory
  *
  * @action	handle to streaming framework action/action
  * @cjob	streaming framework job
  * @return	0 on success.
  */
 
-int snap_action_sync_execute_job(struct snap_action *action,
-				 struct snap_job *cjob,
-				 unsigned int timeout_sec)
+int snap_action_sync_execute_job_set_regs(struct snap_action *action,
+				 struct snap_job *cjob)
 {
-	int rc;
-	int completed;
+	int rc = 0;
 	unsigned int i;
 	struct snap_card *card = (struct snap_card *)action;
 	struct snap_queue_workitem job;
@@ -778,8 +966,8 @@ int snap_action_sync_execute_job(struct snap_action *action,
 	}
 
 	/* job.short_action = 0x00; */	/* Set later */
-	job.flags = 0x01;		/* FIXME Set Flag to Execute */
-	job.seq = 0x0000;		/* Set later */
+	job.flags = 0x01; /* FIXME Set Flag to Execute */
+	job.seq = 0x0000; /* Set later */
 	job.retc = 0x00000000;
 	job.priv_data = 0xdeadbeefc0febabeull;
 
@@ -800,9 +988,9 @@ int snap_action_sync_execute_job(struct snap_action *action,
 
 	snap_trace("    win_size: %d wout_size: %d mmio_in: %d mmio_out: %d\n",
 		cjob->win_size, cjob->wout_size, mmio_in, mmio_out);
-
+	
 	job.short_action = card->sat;/* Set correct Value after attach */
-	job.seq = card->seq++;	  /* Set correct Value after attach */
+	job.seq = card->seq++; /* Set correct Value after attach */
 
 	snap_trace("%s: PASS PARAMETERS to Short Action %d Seq: %x\n",
 		   __func__, job.short_action, job.seq);
@@ -819,10 +1007,35 @@ int snap_action_sync_execute_job(struct snap_action *action,
 			goto __snap_action_sync_execute_job_exit;
 	}
 
-	/* Start Action and wait for finish */
-	snap_action_start(action);
-	completed = snap_action_completed(action, &rc, timeout_sec);
+__snap_action_sync_execute_job_exit:
+	snap_action_stop(action);
+	return rc;
+}
+/**
+ * Synchronous way to send a job away.  Last step : check completion
+ * This function check the completion of the action, manage the IRQ
+ * if needed, and read all action registers through MMIO interface
+ *
+ * @action	handle to streaming framework action/action
+ * @cjob	streaming framework job
+ * timeout_sec  timeout used if polling mode
+ * @return	0 on success.
+ */
 
+int snap_action_sync_execute_job_check_completion(struct snap_action *action,
+				 struct snap_job *cjob,
+				 unsigned int timeout_sec)
+{
+	int rc;
+	unsigned int i;
+	int completed;
+	struct snap_card *card = (struct snap_card *)action;
+	struct snap_queue_workitem job;
+	uint32_t action_addr;
+	uint32_t *job_data;
+	unsigned int mmio_out;
+
+	completed = snap_action_completed(action, &rc, timeout_sec);
 	/* Issue #360 */
 	if (rc != 0) {
 		snap_trace("%s: EIO rc=%d completed=%d\n", __func__,
@@ -838,6 +1051,26 @@ int snap_action_sync_execute_job(struct snap_action *action,
 			rc = SNAP_ETIMEDOUT;
 		}
 		goto __snap_action_sync_execute_job_exit;
+	}
+
+	/* job.short_action = 0x00; */	/* Set later */
+	job.flags = 0x01; /* FIXME Set Flag to Execute */
+	job.seq = 0x0000; /* Set later */
+	job.retc = 0x00000000;
+	job.priv_data = 0xdeadbeefc0febabeull;
+
+	/* Fill workqueue cacheline which we need to transfer to the action */
+	if (cjob->win_size <= (6 * 16)) {
+		memcpy(&job.user, (void *)(unsigned long)cjob->win_addr,
+		       MIN(cjob->win_size, sizeof(job.user)));
+		mmio_out = cjob->win_size / sizeof(uint32_t);
+	} else {
+		job.user.ext.addr  = cjob->win_addr;
+		job.user.ext.size  = cjob->win_size;
+		job.user.ext.type  = SNAP_ADDRTYPE_HOST_DRAM;
+		job.user.ext.flags = (SNAP_ADDRFLAG_EXT |
+				      SNAP_ADDRFLAG_END);
+		mmio_out = sizeof(job.user.ext) / sizeof(uint32_t);
 	}
 
 	/* Get RETC (0x184) back to the caller */
@@ -868,6 +1101,40 @@ int snap_action_sync_execute_job(struct snap_action *action,
 
 __snap_action_sync_execute_job_exit:
 	snap_action_stop(action);
+	return rc;
+}
+
+/**
+ * Synchronous way to send a job away. Blocks until job is done.
+ * These 3 steps can be called separately from the application
+ * BUT manage carefully the action timeout
+ *  * 1rst step: write Action registers into the FPGA
+ *  * 2nd  step: start the Action
+ *  *      step: processing - exchange data
+ *  * 3rd  step: check completion and manage IRQ if needed
+ *
+ * @action	handle to streaming framework action/action
+ * @cjob	streaming framework job
+ * @return	0 on success.
+ */
+
+int snap_action_sync_execute_job(struct snap_action *action,
+				 struct snap_job *cjob,
+				 unsigned int timeout_sec)
+{
+	int rc;
+
+	/* Set action registers through MMIO */
+	rc = snap_action_sync_execute_job_set_regs(action, cjob);
+	if (rc != 0)
+		return rc;
+
+	/* Start Action */
+	snap_action_start(action);
+
+	/* Wait for finish */
+	rc = snap_action_sync_execute_job_check_completion(action, cjob, 
+				timeout_sec);
 	return rc;
 }
 
@@ -963,6 +1230,7 @@ static void *sw_card_alloc_dev(const char *path __unused,
 	dn->priv = NULL;
 	dn->vendor_id = vendor_id;
 	dn->device_id = device_id;
+	dn->name = snap_card_id_2_name(vendor_id); /* Makes invalid name */ 
 	return (struct snap_card *)dn;
 
  __snap_alloc_err:
@@ -1114,7 +1382,11 @@ static int sw_card_ioctl(struct snap_card *card, unsigned int cmd, unsigned long
 	int rc = 0;
 	unsigned long *arg = (unsigned long *)parm;
 
-	snap_trace("  %s Handle: %p CMD: %d\n", __func__, card, cmd);
+	snap_trace("  %s Enter Handle: %p CMD: %d\n", __func__, card, cmd);
+	if (NULL == arg) {
+		snap_trace("  %s EXIT Handle: %p CMD: %d no Parm\n", __func__, card, cmd);
+		return -1;
+	}
 	switch (cmd) {
 	case GET_CARD_TYPE:
 		*arg = 255;    /* Some Unknown */
@@ -1125,10 +1397,20 @@ static int sw_card_ioctl(struct snap_card *card, unsigned int cmd, unsigned long
 	case GET_SDRAM_SIZE:
 		*arg = 0;      /* No Card Ram in SW Mode */
 		break;
+	case GET_DMA_ALIGN:
+		*arg = 1 << 6; /* 64 Bytes Aligned */
+		break;
+	case GET_DMA_MIN_SIZE:
+		*arg = 1 << 0; /* 1 Byte Size */
+		break;
+	case GET_CARD_NAME:
+		strcpy((char*)parm, card->name);
+		break;
 	case SET_SDRAM_SIZE:
 		card->cap_reg = (card->cap_reg & 0xffff) | (parm << 16);
 		break;
 	default:
+		snap_trace("  %s EXIT Handle: %p Invalid CMD: %d\n", __func__, card, cmd);
 		rc = -1;
 		break;
 	}
@@ -1138,8 +1420,8 @@ static int sw_card_ioctl(struct snap_card *card, unsigned int cmd, unsigned long
 /* Software version of the lowlevel functions */
 static struct snap_funcs software_funcs = {
 	.card_alloc_dev = sw_card_alloc_dev,
-	.attach_action = sw_attach_action,	/* attach Action */
-	.detach_action = sw_detach_action,	/* detach Action */
+	.attach_action = sw_attach_action, /* attach Action */
+	.detach_action = sw_detach_action, /* detach Action */
 	.mmio_write32 = sw_mmio_write32,
 	.mmio_read32 = sw_mmio_read32,
 	.mmio_write64 = sw_mmio_write64,
@@ -1165,17 +1447,17 @@ static void _init(void)
 
 	config_env = getenv("SNAP_CONFIG");
 	if (config_env != NULL) {
-                if ( (strcmp(config_env, "FPGA") == 0) ||
-                     (strcmp(config_env, "fpga") == 0) )
-                        snap_config = 0x0;
-                else if ( (strcmp(config_env, "CPU") == 0) ||
-                          (strcmp(config_env, "cpu") == 0) )
-                        snap_config = 0x1;
-                else {
-		        snap_config = strtol(config_env, (char **)NULL, 0);
-                }
-        }
+		if ( (strcmp(config_env, "FPGA") == 0) ||
+			(strcmp(config_env, "fpga") == 0) )
+			snap_config = 0x0;
+		else if ( (strcmp(config_env, "CPU") == 0) ||
+			(strcmp(config_env, "cpu") == 0) )
+			snap_config = 0x1;
+		else {
+			snap_config = strtol(config_env, (char **)NULL, 0);
+		}
+	}
 
-	if (simulation_enabled())
-		df = &software_funcs;
+	if (software_action_enabled())
+		df = &software_funcs; /* Map Software Functions */
 }

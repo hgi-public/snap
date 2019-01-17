@@ -57,12 +57,26 @@ static void usage(const char *prog)
 	       "  -m, --mode <CRC32|ADLER32|SPONGE> mode flags.\n"
 	       "  -T, --test                execute a test if available.\n"
 	       "  -t, --timeout             Timeout in sec (default 3600 sec).\n"
-	       "  -I, --irq                 Enable Interrupts\n"
+	       "  -N, --irq                 Disable Interrupts\n"
 	       "\n"
 	       "Example:\n"
-	       "  snap_checksum -mSPONGE -I -t200 -cSPEED -n2 -f65536 will generate 65536*2/65536 = 2 calls \n"
-	       "  snap_checksum -mSPONGE -I -t200 -cSPEED -n1 -f4     will generate 65536*1/4 = 16384 calls\n"
-               "               (1 call every 4 calls until 65536...\n"
+	       "To run speed_test with generation of 65536*n/f = number of SHA3 calls :\n"
+	       "\n"
+	       "Generation of 65536*1/65536 = 1 call :\n"
+	       "SNAP_CONFIG=FPGA ./snap_checksum -C1 -vv -t2500 -mSPONGE -N -cSPEED -n1 -f65536\n"
+	       "\n"
+	       "Generation of 65536*128/65536 = 128 calls :\n"
+	       "SNAP_CONFIG=FPGA ./snap_checksum -C1 -vv -t2500 -mSPONGE -N -cSPEED -n128 -f65536\n"
+	       "\n"	       
+	       "SNAP_CONFIG=FPGA ./snap_checksum -C1 -vv -t2500 -mSPONGE -N -cSPEED -n4096 -f65536\n"
+	       "\n"
+	       "Generation of 65536*1/4 = 16384 calls ie 1 call every 4 calls until 65536...\n"
+	       "SNAP_CONFIG=FPGA ./snap_checksum -C1 -vv -t2500 -mSPONGE -N -cSPEED -n1 -f4\n"
+	       "\n"
+	       "to run tests SHA3 or/and SHAKE :\n"
+	       "SNAP_CONFIG=FPGA ./snap_checksum -mSPONGE -N -t800 -cSHA3\n"
+	       "SNAP_CONFIG=FPGA ./snap_checksum -mSPONGE -N -t800 -cSHAKE\n"
+	       "SNAP_CONFIG=FPGA ./snap_checksum -mSPONGE -N -t800 -cSHA3_SHAKE\n"
 	       "\n",
 	       prog);
 }
@@ -168,7 +182,7 @@ static int do_checksum(int card_no, unsigned long timeout,
 		       unsigned char type_in,  unsigned long size,
 		       uint64_t checksum_start,
 		       checksum_mode_t mode,
-		       test_choice_t test_choice, 
+		       test_choice_t test_choice,
                        uint32_t nb_elmts, uint32_t freq,
 		       uint64_t *_checksum,
 		       uint64_t *_usec,
@@ -199,7 +213,7 @@ static int do_checksum(int card_no, unsigned long timeout,
 		"  job_size: %ld bytes\n",
 		type_in, (long long)addr_in,
 		size, (long long)checksum_start, mode,
-		checksum_mode_str[mode % CHECKSUM_MODE_MAX], test_choice, 
+		checksum_mode_str[mode % CHECKSUM_MODE_MAX], test_choice,
 		test_choice_str[test_choice % CHECKSUM_TYPE_MAX],
 		nb_elmts, freq, sizeof(struct checksum_job));
 
@@ -209,13 +223,16 @@ static int do_checksum(int card_no, unsigned long timeout,
 	if (card == NULL) {
 		fprintf(stderr, "err: failed to open card %u: %s\n",
 			card_no, strerror(errno));
+                fprintf(stderr, "Default mode is FPGA mode.\n");
+                fprintf(stderr, "Did you want to run CPU mode ? => add SNAP_CONFIG=CPU before your command.\n");
+                fprintf(stderr, "Otherwise make sure you ran snap_find_card and snap_maint for your selected card.\n");
 		goto out_error;
 	}
 
 	action = snap_attach_action(card, CHECKSUM_ACTION_TYPE, action_irq, 60);
 	if (action == NULL) {
-		fprintf(stderr, "err: failed to attach action %u: %s\n",
-			card_no, strerror(errno));
+		fprintf(stderr, "err (%d): Card: %d failed to attach action 0x%x: %s\n",
+			errno, card_no, CHECKSUM_ACTION_TYPE, strerror(errno));
 		goto out_error1;
 	}
 
@@ -255,7 +272,7 @@ static int do_checksum(int card_no, unsigned long timeout,
             nb_keccak_calls = nb_of_runs * mjob_out.nb_rounds;
 	    fprintf(fp, "%lld Keccak-p[1600,24] calls\n", (long long)nb_keccak_calls);
 	    fprintf(fp, "%.3f Keccak-p[1600,24] / Second.\n",
-		((double)(1000000 * nb_keccak_calls)) / 
+		((double)(1000000 * nb_keccak_calls)) /
                  (double)(timediff_usec(&etime, &stime)));
         }
 
@@ -302,7 +319,7 @@ int main(int argc, char *argv[])
 	uint32_t test_choice = CHECKSUM_SPEED, nb_elmts = 0, freq = 1;
 	int test = 0;
 	unsigned int threads = 160;
-	snap_action_flag_t action_irq = 0;
+        snap_action_flag_t action_irq = (SNAP_ACTION_DONE_IRQ | SNAP_ATTACH_IRQ);
 
 	while (1) {
 		int option_index = 0;
@@ -323,12 +340,12 @@ int main(int argc, char *argv[])
 			{ "version",	 no_argument,	    NULL, 'V' },
 			{ "verbose",	 no_argument,	    NULL, 'v' },
 			{ "help",	 no_argument,	    NULL, 'h' },
-			{ "irq", 	 no_argument,	    NULL, 'I' },
+			{ "noirq", 	 no_argument,	    NULL, 'N' },
 			{ 0,		 no_argument,	    NULL, 0   },
 		};
 
 		ch = getopt_long(argc, argv,
-				 "A:C:i:a:S:Tx:c:n:f:m:s:t:x:VqvhI",
+				 "A:C:i:a:S:Tx:c:n:f:m:s:t:x:VqvhN",
 				 long_options, &option_index);
 		if (ch == -1)
 			break;
@@ -417,14 +434,19 @@ int main(int argc, char *argv[])
 			usage(argv[0]);
 			exit(EXIT_SUCCESS);
 			break;
-		case 'I':
-			action_irq = (SNAP_ACTION_DONE_IRQ | SNAP_ATTACH_IRQ);
+		case 'N':
+			action_irq = 0;
 			break;
 		default:
 			usage(argv[0]);
 			exit(EXIT_FAILURE);
 		}
 	}
+
+        if (argc == 1) {               // to provide help when program is called without argument
+          usage(argv[0]);
+          exit(EXIT_FAILURE);
+        }
 
 	if (optind != argc) {
 		usage(argv[0]);

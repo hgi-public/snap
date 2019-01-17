@@ -33,76 +33,106 @@ ENTITY snap_core IS
     -- PSL Interface
     --
     -- Command interface
-    ah_cvalid       : OUT std_logic;                  -- Command valid
-    ah_ctag         : OUT std_logic_vector(0 TO 7);   -- Command tag
-    ah_ctagpar      : OUT std_logic;                  -- Command tag parity
-    ah_com          : OUT std_logic_vector(0 TO 12);  -- Command code
-    ah_compar       : OUT std_logic;                  -- Command code parity
-    ah_cabt         : OUT std_logic_vector(0 TO 2);   -- Command ABT
-    ah_cea          : OUT std_logic_vector(0 TO 63);  -- Command address
-    ah_ceapar       : OUT std_logic;                  -- Command address parity
-    ah_cch          : OUT std_logic_vector(0 TO 15);  -- Command context handle
-    ah_csize        : OUT std_logic_vector(0 TO 11);  -- Command size
-    ha_croom        : IN  std_logic_vector(0 TO 7);   -- Command room
+    ah_cvalid       : OUT std_logic;                                  -- Command valid
+    ah_ctag         : OUT std_logic_vector(0 TO 7);                   -- Command tag
+    ah_ctagpar      : OUT std_logic;                                  -- Command tag parity
+    ah_com          : OUT std_logic_vector(0 TO 12);                  -- Command code
+    ah_compar       : OUT std_logic;                                  -- Command code parity
+    ah_cabt         : OUT std_logic_vector(0 TO 2);                   -- Command ABT
+    ah_cea          : OUT std_logic_vector(0 TO 63);                  -- Command address
+    ah_ceapar       : OUT std_logic;                                  -- Command address parity
+    ah_cch          : OUT std_logic_vector(0 TO 15);                  -- Command context handle
+    ah_csize        : OUT std_logic_vector(0 TO 11);                  -- Command size
+    ha_croom        : IN  std_logic_vector(0 TO 7);                   -- Command room
     --
     -- Buffer interface
-    ha_brvalid      : IN  std_logic;                  -- Buffer Read valid
-    ha_brtag        : IN  std_logic_vector(0 TO 7);   -- Buffer Read tag
-    ha_brtagpar     : IN  std_logic;                  -- Buffer Read tag parity
-    ha_brad         : IN  std_logic_vector(0 TO 5);   -- Buffer Read address
-    ah_brlat        : OUT std_logic_vector(0 TO 3);   -- Buffer Read latency
-    ah_brdata       : OUT std_logic_vector(0 TO 511); -- Buffer Read data
-    ah_brpar        : OUT std_logic_vector(0 TO 7);   -- Buffer Read parity
-    ha_bwvalid      : IN  std_logic;                  -- Buffer Write valid
-    ha_bwtag        : IN  std_logic_vector(0 TO 7);   -- Buffer Write tag
-    ha_bwtagpar     : IN  std_logic;                  -- Buffer Write tag parity
-    ha_bwad         : IN  std_logic_vector(0 TO 5);   -- Buffer Write address
-    ha_bwdata       : IN  std_logic_vector(0 TO 511); -- Buffer Write data
-    ha_bwpar        : IN  std_logic_vector(0 TO 7);   -- Buffer Write parity
+    ha_brvalid      : IN  std_logic;                                  -- Buffer Read valid
+    ha_brtag        : IN  std_logic_vector(0 TO 7);                   -- Buffer Read tag
+    ha_brtagpar     : IN  std_logic;                                  -- Buffer Read tag parity
+    ha_brad         : IN  std_logic_vector(0 TO 5);                   -- Buffer Read address
+    ah_brlat        : OUT std_logic_vector(0 TO 3);                   -- Buffer Read latency
+    ah_brdata       : OUT std_logic_vector(0 TO (512*CAPI_VER)-1);    -- Buffer Read data
+    ah_brpar        : OUT std_logic_vector(0 TO (8*CAPI_VER)-1);      -- Buffer Read parity
+    ha_bwvalid      : IN  std_logic;                                  -- Buffer Write valid
+    ha_bwtag        : IN  std_logic_vector(0 TO 7);                   -- Buffer Write tag
+    ha_bwtagpar     : IN  std_logic;                                  -- Buffer Write tag parity
+    ha_bwad         : IN  std_logic_vector(0 TO 5);                   -- Buffer Write address
+    ha_bwdata       : IN  std_logic_vector(0 TO (512*CAPI_VER)-1);    -- Buffer Write data
+    ha_bwpar        : IN  std_logic_vector(0 TO (8*CAPI_VER)-1);      -- Buffer Write parity
     --
     --  Response interface
-    ha_rvalid       : IN  std_logic;                  -- Response valid
-    ha_rtag         : IN  std_logic_vector(0 TO 7);   -- Response tag
-    ha_rtagpar      : IN  std_logic;                  -- Response tag parity
-    ha_response     : IN  std_logic_vector(0 TO 7);   -- Response
-    ha_rcredits     : IN  std_logic_vector(0 TO 8);   -- Response credits
-    ha_rcachestate  : IN  std_logic_vector(0 TO 1);   -- Response cache state
-    ha_rcachepos    : IN  std_logic_vector(0 TO 12);  -- Response cache pos
+    ha_rvalid       : IN  std_logic;                                  -- Response valid
+    ha_rtag         : IN  std_logic_vector(0 TO 7);                   -- Response tag
+    ha_rtagpar      : IN  std_logic;                                  -- Response tag parity
+    ha_response     : IN  std_logic_vector(0 TO 7);                   -- Response
+    ha_rcredits     : IN  std_logic_vector(0 TO 8);                   -- Response credits
+    ha_rcachestate  : IN  std_logic_vector(0 TO 1);                   -- Response cache state
+    ha_rcachepos    : IN  std_logic_vector(0 TO 12);                  -- Response cache pos
+#ifdef CONFIG_CAPI20
+    ha_rditag       : IN  std_logic_vector(0 to 8);                   -- DMA Translation Tag for xlat_* requests
+    ha_rditagpar    : IN  std_logic;                                  -- Parity bit for above
+    ha_response_ext : IN  std_logic_vector(0 to 7);                   -- Response Ext
+    ha_rpagesize    : IN  std_logic_vector(0 to 3);                   -- Command translated Page size.  Provided by PSL to allow
+#endif
     --
     -- MMIO interface
-    ha_mmval        : IN  std_logic;                  -- A valid MMIO is present
-    ha_mmcfg        : IN  std_logic;                  -- MMIO is AFU descriptor space access
-    ha_mmrnw        : IN  std_logic;                  -- 1 = read  0 = write
-    ha_mmdw         : IN  std_logic;                  -- 1 = doubleword  0 = word
-    ha_mmad         : IN  std_logic_vector(0 TO 23);  -- mmio address
-    ha_mmadpar      : IN  std_logic;                  -- mmio address parity
-    ha_mmdata       : IN  std_logic_vector(0 TO 63);  -- Write data
-    ha_mmdatapar    : IN  std_logic;                  -- Write data parity
-    ah_mmack        : OUT std_logic;                  -- Write is complete or Read is valid
-    ah_mmdata       : OUT std_logic_vector(0 TO 63);  -- Read data
-    ah_mmdatapar    : OUT std_logic;                  -- Read data parity
+    ha_mmval        : IN  std_logic;                                  -- A valid MMIO is present
+    ha_mmcfg        : IN  std_logic;                                  -- MMIO is AFU descriptor space access
+    ha_mmrnw        : IN  std_logic;                                  -- 1 = read  0 = write
+    ha_mmdw         : IN  std_logic;                                  -- 1 = doubleword  0 = word
+    ha_mmad         : IN  std_logic_vector(0 TO 23);                  -- mmio address
+    ha_mmadpar      : IN  std_logic;                                  -- mmio address parity
+    ha_mmdata       : IN  std_logic_vector(0 TO 63);                  -- Write data
+    ha_mmdatapar    : IN  std_logic;                                  -- Write data parity
+    ah_mmack        : OUT std_logic;                                  -- Write is complete or Read is valid
+    ah_mmdata       : OUT std_logic_vector(0 TO 63);                  -- Read data
+    ah_mmdatapar    : OUT std_logic;                                  -- Read data parity
     --
     -- Control interface
-    ha_jval         : IN  std_logic;                  -- Job valid
-    ha_jcom         : IN  std_logic_vector(0 TO 7);   -- Job command
-    ha_jcompar      : IN  std_logic;                  -- Job command parity
-    ha_jea          : IN  std_logic_vector(0 TO 63);  -- Job address
-    ha_jeapar       : IN  std_logic;                  -- Job address parity
-    ah_jrunning     : OUT std_logic;                  -- Job running
-    ah_jdone        : OUT std_logic;                  -- Job done
-    ah_jcack        : OUT std_logic;                  -- Acknowledge completion of LLCMD
-    ah_jerror       : OUT std_logic_vector(0 TO 63);  -- Job error
-    ah_jyield       : OUT std_logic;                  -- Job yield
-    ah_tbreq        : OUT std_logic := '0';           -- Timebase command request
-    ah_paren        : OUT std_logic;                  -- Parity enable
-    ha_pclock       : IN  std_logic;                  -- clock
+    ha_jval         : IN  std_logic;                                  -- Job valid
+    ha_jcom         : IN  std_logic_vector(0 TO 7);                   -- Job command
+    ha_jcompar      : IN  std_logic;                                  -- Job command parity
+    ha_jea          : IN  std_logic_vector(0 TO 63);                  -- Job address
+    ha_jeapar       : IN  std_logic;                                  -- Job address parity
+    ah_jrunning     : OUT std_logic;                                  -- Job running
+    ah_jdone        : OUT std_logic;                                  -- Job done
+    ah_jcack        : OUT std_logic;                                  -- Acknowledge completion of LLCMD
+    ah_jerror       : OUT std_logic_vector(0 TO 63);                  -- Job error
+    ah_jyield       : OUT std_logic;                                  -- Job yield
+    ah_tbreq        : OUT std_logic := '0';                           -- Timebase command request
+    ah_paren        : OUT std_logic;                                  -- Parity enable
+    ha_pclock       : IN  std_logic;                                  -- clock
+#ifdef CONFIG_CAPI20
+    -- DMA port 0 Req
+    d0h_dvalid          : OUT   std_logic;
+    d0h_req_utag        : OUT   std_logic_vector(0 to 9);
+    d0h_req_itag        : OUT   std_logic_vector(0 to 8);
+    d0h_dtype           : OUT   std_logic_vector(0 to 2);
+    d0h_datomic_op      : OUT   std_logic_vector(0 to 5);
+    d0h_datomic_le      : OUT   std_logic;
+    d0h_dsize           : OUT   std_logic_vector(0 to 9);
+    d0h_ddata           : OUT   std_logic_vector(0 to 1023);
+    -- DMA port 0 Sent
+    hd0_sent_utag_valid : IN    std_logic;
+    hd0_sent_utag       : IN    std_logic_vector(0 to 9);
+    hd0_sent_utag_sts   : IN    std_logic_vector(0 to 2);
+    -- DMA port 0 Completion interface
+    hd0_cpl_valid       : IN    std_logic;
+    hd0_cpl_utag        : IN    std_logic_vector(0 to 9);
+    hd0_cpl_type        : IN    std_logic_vector(0 to 2);
+    hd0_cpl_size        : IN    std_logic_vector(0 to 9);
+    hd0_cpl_laddr       : IN    std_logic_vector(0 to 6);
+    hd0_cpl_byte_count  : IN    std_logic_vector(0 to 9);
+    hd0_cpl_data        : IN    std_logic_vector(0 to 1023);
+#endif
     --
     -- ACTION Interface
     -- misc
     action_reset   : OUT std_logic;
 
 #ifdef CONFIG_ENABLE_NVME
-    nvme_reset_ctl : OUT std_logic_vector(SNAP_NVME_RST_L  DOWNTO SNAP_NVME_RST_R);   -- keeping NVMe drives in reset by driving 0s
+    nvme_reset_ctl : OUT STD_LOGIC;
+    nvme_perst_ctl : OUT std_logic_vector(SNAP_NVME_PERST_L  DOWNTO SNAP_NVME_PERST_R);   -- keeping NVMe drives in reset by driving 0s
 #endif
     --
     -- Kernel AXI Master Interface
@@ -134,15 +164,25 @@ ARCHITECTURE snap_core OF snap_core IS
   --
   -- SIGNAL
   SIGNAL afu_reset           : std_logic;
+  SIGNAL mmio_action_reset   : std_logic;
+  SIGNAL axi_dma_shim_reset  : std_logic;
   SIGNAL ah_b                : AH_B_T;
   SIGNAL ah_c                : AH_C_T;
   SIGNAL ah_j                : AH_J_T;
   SIGNAL ah_mm               : AH_MM_T;
+  SIGNAL cd_c                : CD_C_T;
+  SIGNAL cmm_c               : CMM_C_T;
   SIGNAL cmm_e               : CMM_E_T;
+  SIGNAL dmm_c               : DMM_C_T;
   SIGNAL dmm_e               : DMM_E_T;
   SIGNAL ha_b                : HA_B_T;
   SIGNAL ha_c                : HA_C_T;
   SIGNAL ha_j                : HA_J_T;
+#ifdef CONFIG_CAPI20
+  SIGNAL hd_s                : HD_S_T;
+  SIGNAL hd_c                : HD_C_T;
+  SIGNAL dh_d                : DH_D_T;
+#endif
   SIGNAL ha_mm               : HA_MM_T;
   SIGNAL ha_r                : HA_R_T;
   SIGNAL jmm_c               : JMM_C_T;
@@ -150,8 +190,10 @@ ARCHITECTURE snap_core OF snap_core IS
   SIGNAL js_c                : JS_C_T;
   SIGNAL jx_c                : JX_C_T;
   SIGNAL mmc_c               : MMC_C_T;
+  SIGNAL mmc_d               : MMC_D_T;
   SIGNAL mmc_e               : MMC_E_T;
   SIGNAL mmd_a               : MMD_A_T;
+  SIGNAL mmd_c               : MMD_C_T;
   SIGNAL mmd_i               : MMD_I_T;
   SIGNAL mmj_c               : MMJ_C_T;
   SIGNAL mmj_d               : MMJ_D_T;
@@ -214,35 +256,43 @@ BEGIN
   -- Buffer Interface
   ------------------------------------------------------------------------------
   ------------------------------------------------------------------------------
-    ha_b.rvalid                 <=                  ha_brvalid;
-    ha_b.rtag(7 DOWNTO 0)       <= v2vhdl_connector(ha_brtag(0 TO 7));
-    ha_b.rtagpar                <=                  ha_brtagpar;
-    ha_b.rad(5 DOWNTO 0)        <= v2vhdl_connector(ha_brad(0 TO 5));
-    ha_b.wvalid                 <=                  ha_bwvalid;
-    ha_b.wtag(7 DOWNTO 0)       <= v2vhdl_connector(ha_bwtag(0 TO 7));
-    ha_b.wtagpar                <=                  ha_bwtagpar;
-    ha_b.wad(5 DOWNTO 0)        <= v2vhdl_connector(ha_bwad(0 TO 5));
-    ha_b.wdata(511 DOWNTO 0)    <= v2vhdl_connector(ha_bwdata(0 TO 511));
-    ha_b.wpar(7 DOWNTO 0)       <= v2vhdl_connector(ha_bwpar(0 TO 7));
+#ifdef CONFIG_CAPI10
+    ha_b.rvalid                           <=                  ha_brvalid;
+    ha_b.rtag(7 DOWNTO 0)                 <= v2vhdl_connector(ha_brtag(0 TO 7));
+    ha_b.rtagpar                          <=                  ha_brtagpar;
+    ha_b.rad(5 DOWNTO 0)                  <= v2vhdl_connector(ha_brad(0 TO 5));
+    ha_b.wvalid                           <=                  ha_bwvalid;
+    ha_b.wtag(7 DOWNTO 0)                 <= v2vhdl_connector(ha_bwtag(0 TO 7));
+    ha_b.wtagpar                          <=                  ha_bwtagpar;
+    ha_b.wad(5 DOWNTO 0)                  <= v2vhdl_connector(ha_bwad(0 TO 5));
+    ha_b.wdata((512*CAPI_VER)-1 DOWNTO 0) <= v2vhdl_connector(ha_bwdata(0 TO (512*CAPI_VER)-1));
+    ha_b.wpar( (  8*CAPI_VER)-1 DOWNTO 0) <= v2vhdl_connector(ha_bwpar( 0 TO (  8*CAPI_VER)-1));
 
-    ah_brlat(0 TO 3)            <= vhdl2v_connector(ah_b.rlat(3 DOWNTO 0));
-    ah_brdata(0 TO 511)         <= vhdl2v_connector(ah_b.rdata(511 DOWNTO 0));
-    ah_brpar(0 TO 7)            <= vhdl2v_connector(ah_b.rpar(7 DOWNTO 0));
-
+    ah_brlat(0 TO 3)                      <= vhdl2v_connector(ah_b.rlat(3 DOWNTO 0));
+    ah_brdata(0 TO (512*CAPI_VER)-1)      <= vhdl2v_connector(ah_b.rdata((512*CAPI_VER)-1 DOWNTO 0));
+    ah_brpar( 0 TO (  8*CAPI_VER)-1)      <= vhdl2v_connector(ah_b.rpar( (  8*CAPI_VER)-1 DOWNTO 0));
+#else
+    ah_brlat(0 TO 3)                      <= "0000";
+#endif
 
   ------------------------------------------------------------------------------
   ------------------------------------------------------------------------------
   -- Response Interface
   ------------------------------------------------------------------------------
   ------------------------------------------------------------------------------
-    ha_r.valid                  <=                  ha_rvalid;
-    ha_r.tag(7 DOWNTO 0)        <= v2vhdl_connector(ha_rtag(0 TO 7));
-    ha_r.tagpar                 <=                  ha_rtagpar;
-    ha_r.response               <= ENCODE_RSP_CODES(to_integer(unsigned(ha_response(0 TO 7))));
-    ha_r.credits(8 DOWNTO 0)    <= v2vhdl_connector(ha_rcredits(0 TO 8));
-    ha_r.cachestate(1 DOWNTO 0) <= v2vhdl_connector(ha_rcachestate(0 TO 1));
-    ha_r.cachepos(12 DOWNTO 0)  <= v2vhdl_connector(ha_rcachepos(0 TO 12));
-
+    ha_r.valid                    <=                  ha_rvalid;
+    ha_r.tag(7 DOWNTO 0)          <= v2vhdl_connector(ha_rtag(0 TO 7));
+    ha_r.tagpar                   <=                  ha_rtagpar;
+    ha_r.response                 <= ENCODE_RSP_CODES(to_integer(unsigned(ha_response(0 TO 7))));
+    ha_r.credits(8 DOWNTO 0)      <= v2vhdl_connector(ha_rcredits(0 TO 8));
+    ha_r.cachestate(1 DOWNTO 0)   <= v2vhdl_connector(ha_rcachestate(0 TO 1));
+    ha_r.cachepos(12 DOWNTO 0)    <= v2vhdl_connector(ha_rcachepos(0 TO 12));
+#ifdef CONFIG_CAPI20
+    ha_r.ditag(8 DOWNTO 0)        <= v2vhdl_connector(ha_rditag(0 TO 8));
+    ha_r.ditagpar                 <=                  ha_rditagpar;
+    ha_r.response_ext(7 DOWNTO 0) <= v2vhdl_connector(ha_response_ext(0 TO 7));
+    ha_r.pagesize(3 DOWNTO 0)     <= v2vhdl_connector(ha_rpagesize(0 TO 3));
+#endif
 
   ------------------------------------------------------------------------------
   ------------------------------------------------------------------------------
@@ -280,6 +330,32 @@ BEGIN
     ah_jerror(0 TO 63)          <= vhdl2v_connector(ah_j.error(63 DOWNTO 0));
     ah_jyield                   <=                  ah_j.yield;
 
+#ifdef CONFIG_CAPI20
+  ------------------------------------------------------------------------------
+  ------------------------------------------------------------------------------
+  -- CAPI 2.0 Interface
+  ------------------------------------------------------------------------------
+  ------------------------------------------------------------------------------
+    hd_s.utag_valid         <=                  hd0_sent_utag_valid;
+    hd_s.utag               <= v2vhdl_connector(hd0_sent_utag(0 to 9));
+    hd_s.utag_sts           <= v2vhdl_connector(hd0_sent_utag_sts(0 to 2));
+    hd_c.valid              <=                  hd0_cpl_valid;
+    hd_c.utag               <= v2vhdl_connector(hd0_cpl_utag(0 to 9));
+    hd_c.ctype              <= v2vhdl_connector(hd0_cpl_type(0 to 2));
+    hd_c.size               <= v2vhdl_connector(hd0_cpl_size(0 to 9));
+    hd_c.laddr              <= v2vhdl_connector(hd0_cpl_laddr(0 to 6));
+    hd_c.byte_count         <= v2vhdl_connector(hd0_cpl_byte_count(0 to 9));
+    hd_c.data               <= v2vhdl_connector(hd0_cpl_data(0 to 1023));
+
+    d0h_dvalid              <=                 dh_d.valid;
+    d0h_req_utag            <=vhdl2v_connector(dh_d.req_utag(9 DOWNTO 0));
+    d0h_req_itag            <=vhdl2v_connector(dh_d.req_itag(8 DOWNTO 0));
+    d0h_dtype               <=vhdl2v_connector(dh_d.req_type(2 DOWNTO 0));
+    d0h_datomic_op          <=vhdl2v_connector(dh_d.atomic_op(5 DOWNTO 0));
+    d0h_datomic_le          <=                 dh_d.atomic_le;
+    d0h_dsize               <=vhdl2v_connector(dh_d.size(9    DOWNTO 0));
+    d0h_ddata               <=vhdl2v_connector(dh_d.data(1023 DOWNTO 0));
+#endif
 
 
 --------------------------------------------------------------------------------
@@ -312,6 +388,21 @@ BEGIN
       ha_b_i                 => ha_b,
       ah_c_o                 => ah_c,
       ah_b_o                 => ah_b,
+#ifdef CONFIG_CAPI20
+      hd_s_i                 => hd_s,
+      hd_c_i                 => hd_c,
+      dh_d_o                 => dh_d,
+#endif
+      --
+      -- MMIO Interface
+      mmd_a_i                => mmd_a,
+      mmd_c_i                => mmd_c,
+      mmd_i_i                => mmd_i,
+      dmm_c_o                => dmm_c,
+      dmm_e_o                => dmm_e,
+      --
+      -- CTRL Manager Interface
+      cd_c_i                 => cd_c,
       --
       -- AXI SLAVE Interface
       sd_c_i                 => sd_c,
@@ -344,9 +435,14 @@ BEGIN
       -- Global AFU Signals
       afu_reset_o            => afu_reset,
       --
+      -- DMA IOs
+      cd_c_o                 => cd_c,
+      --
       -- MMIO IOs
       mmc_c_i                => mmc_c,
+      mmc_d_i                => mmc_d,
       mmc_e_i                => mmc_e,
+      cmm_c_o                => cmm_c,
       cmm_e_o                => cmm_e
     );
 
@@ -396,9 +492,11 @@ BEGIN
       -- pervasive
       ha_pclock              => ha_pclock,
       afu_reset              => afu_reset,
+      action_reset           => mmio_action_reset,
 
 #ifdef CONFIG_ENABLE_NVME
       nvme_reset_ctl         => nvme_reset_ctl,
+      nvme_perst_ctl         => nvme_perst_ctl,
 #endif
 
       --
@@ -410,8 +508,10 @@ BEGIN
       ah_mm_o                => ah_mm,
       --
       -- CTRL MGR Interface
+      cmm_c_i                => cmm_c,
       cmm_e_i                => cmm_e,
       mmc_c_o                => mmc_c,
+      mmc_d_o                => mmc_d,
       mmc_e_o                => mmc_e,
       --
       -- JOB MGR Interface
@@ -421,8 +521,10 @@ BEGIN
       mmj_d_o                => mmj_d,
       --
       -- DMA Interface
+      dmm_c_i                => dmm_c,
       dmm_e_i                => dmm_e,
       mmd_a_o                => mmd_a,
+      mmd_c_o                => mmd_c,
       mmd_i_o                => mmd_i,
       --
       -- AXI MASTER Interface
@@ -469,7 +571,7 @@ BEGIN
       --
       -- pervasive
       ha_pclock                    => ha_pclock,
-      afu_reset                    => afu_reset,
+      afu_reset                    => axi_dma_shim_reset,
       --
       sd_c_o                       => sd_c,
       sd_d_o                       => sd_d,
@@ -482,6 +584,7 @@ BEGIN
       sk_d_o                       => sk_d_o,  -- axi slave full interface
       ks_d_i                       => ks_d_i
      );
+    axi_dma_shim_reset <= afu_reset OR mmio_action_reset;
 
-    action_reset <= afu_reset;
+    action_reset <= afu_reset OR mmio_action_reset;
 END ARCHITECTURE;
